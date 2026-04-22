@@ -1,0 +1,136 @@
+{
+  "theme_and_archetype": {
+    "domain": "social_media_app",
+    "theme": "day_night_toggle",
+    "archetype_selected": "Archetype 4 (Swiss & High-Contrast) + Deep Blue Accent",
+    "reasoning": "The user requested a modern, minimalist blue, white, and black palette. Archetype 4 delivers the necessary structural clarity and authority (black/white contrast) for a social and professional 'learn-to-earn' platform, while the rich blue serves as the kinetic trigger and primary brand identifier. It avoids the chaotic 'dribbble' look and grounds the user in a premium, clean experience."
+  },
+  "typography": {
+    "primary_font": "Cabinet Grotesk",
+    "primary_font_usage": "Headings, titles, and key metrics. Provides a structural, raw yet premium aesthetic.",
+    "secondary_font": "Satoshi",
+    "secondary_font_usage": "Body text, captions, UI labels, tags. High legibility with modern geometry.",
+    "hierarchy": {
+      "h1": "text-4xl md:text-5xl tracking-tight font-bold",
+      "h2": "text-2xl md:text-3xl tracking-tight font-semibold",
+      "h3": "text-xl font-medium",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm text-muted-foreground",
+      "overline": "text-xs tracking-[0.2em] uppercase font-bold"
+    }
+  },
+  "color_palette": {
+    "light_mode": {
+      "background": "#FFFFFF",
+      "surface": "#FAFAFA",
+      "surface_hover": "#F1F5F9",
+      "primary": "#2563EB",
+      "primary_foreground": "#FFFFFF",
+      "text_main": "#0A0A0A",
+      "text_muted": "#64748B",
+      "border": "#E2E8F0"
+    },
+    "dark_mode": {
+      "background": "#0A0A0A",
+      "surface": "#121212",
+      "surface_hover": "#1E1E1E",
+      "primary": "#3B82F6",
+      "primary_foreground": "#FFFFFF",
+      "text_main": "#FAFAFA",
+      "text_muted": "#A1A1AA",
+      "border": "#27272A"
+    }
+  },
+  "spacing_and_layout": {
+    "container_padding": "p-4 md:p-8",
+    "bento_grid": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6",
+    "feed_layout": "max-w-2xl mx-auto flex flex-col gap-8 pb-24 md:pb-8",
+    "card_radius": "rounded-2xl",
+    "button_radius": "rounded-full",
+    "general_rules": "Use generous spacing. Don't center-everything; left-align data and text. In the feed, ensure media goes full-width inside the container without side padding, like Instagram."
+  },
+  "ui_components_blueprints": {
+    "navigation": {
+      "mobile": "Fixed bottom bar (h-16), backdrop-blur-xl bg-background/80, 1px top border. Icons: Home, Explore, Upload (primary circle), Courses/Gigs, Profile.",
+      "desktop": "Fixed left sidebar (w-64 or w-72), border-r, h-screen p-6. Vertical links, large spacing."
+    },
+    "feed_post": {
+      "container": "border-b pb-6",
+      "header": "Flex row, avatar (w-10 h-10 rounded-full), bold username, muted timestamp, 'more' icon right.",
+      "media": "aspect-[4/5] or 16:9, rounded-xl object-cover mt-3 mb-3 w-full border",
+      "actions": "Flex row, heart, comment, share icons. Bookmark on right.",
+      "content": "Likes count (bold text-sm), Username + Caption (text-sm), tags (text-blue-500)."
+    },
+    "upload_modal": {
+      "container": "Fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm",
+      "modal_body": "bg-background rounded-2xl w-full max-w-xl max-h-[80vh] overflow-hidden flex flex-col",
+      "actions": "Shadcn Textarea for caption, subtle tags input. File upload dropzone with dashed border and generous p-12."
+    },
+    "profile": {
+      "header": "Flex row items-center gap-6 p-6. Large avatar (w-24 h-24), stats (Posts, Followers, Following), Bio, 'Edit Profile' or 'Follow' button.",
+      "grid": "Grid cols-3 gap-1 md:gap-4. Square aspect ratio for thumbnails."
+    },
+    "explore_courses_gigs": {
+      "layout": "Grid layouts. Courses use aspect-video cards. Gigs use flat bento-style list items with 'Apply' buttons."
+    }
+  },
+  "media": {
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1560250097-0b93528c311a?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzY4NTU2MjV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional man standing",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzY4NTU2MjV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional woman gray jacket",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxwcm9mZXNzaW9uYWwlMjBwb3J0cmFpdHxlbnwwfHx8fDE3NzY4NTU2MjV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Professional woman focus",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.pexels.com/photos/10657877/pexels-photo-10657877.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Man in suit",
+        "category": "user_avatar"
+      }
+    ],
+    "feed_and_courses": [
+      {
+        "url": "https://images.pexels.com/photos/6446678/pexels-photo-6446678.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Netbook ceramic vase",
+        "category": "feed_post_image"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwzfHxsYXB0b3AlMjB3b3Jrc3BhY2V8ZW58MHx8fHwxNzc2ODU1NjI2fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Woman at monitor",
+        "category": "feed_post_image"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1519408469771-2586093c3f14?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxOTJ8MHwxfHNlYXJjaHwzfHxjcmVhdGl2ZSUyMGRlc2lnbnxlbnwwfHx8fDE3NzY4NTU2MjZ8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Macbook beside imac",
+        "category": "course_thumbnail"
+      },
+      {
+        "url": "https://images.pexels.com/photos/8546798/pexels-photo-8546798.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Blurred desk notebook laptop",
+        "category": "course_thumbnail"
+      }
+    ]
+  },
+  "interactions_and_motion": {
+    "hover": "Subtle -translate-y-1 on cards. Buttons must change to a lighter/darker hue explicitly (e.g., hover:bg-blue-700/90).",
+    "theme_toggle": "Smooth transition using CSS variables. Background should use transition-colors duration-300.",
+    "testing": "All interactive elements MUST have data-testid attributes (e.g. data-testid='upload-submit-btn')."
+  },
+  "implementation_instructions_to_main_agent": [
+    "Install Phosphor Icons or Lucide-react for the clean, structural icons required.",
+    "Use Tailwind variables mapped to HSL or HEX for complete Day/Night control. Example: bg-background, text-foreground.",
+    "Do NOT use standard HTML <select> or <input type='date'>. Always use Shadcn UI customized without the 'Vercel default' look. Strip heavy box-shadows.",
+    "Build a Left Sidebar layout for md: screens and above, and a Bottom Navigation bar for mobile view.",
+    "Set the main container for the Feed to max-w-2xl, and the Explore/Courses to max-w-5xl/7xl using CSS grid.",
+    "Add 'data-testid' to all core functionalities (login, upload, like, comment, toggle)."
+  ]
+}
