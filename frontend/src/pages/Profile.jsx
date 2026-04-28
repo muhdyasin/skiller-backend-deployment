@@ -97,6 +97,25 @@ export default function Profile() {
                                 {is_following ? "Following" : "Follow"}
                             </Button>
                         )}
+                        {is_self && currentUser?.role === "student" && (
+                            <Button
+                                size="sm"
+                                onClick={async () => {
+                                    try {
+                                        await api.post("/users/me/upgrade-role", { role: "creator" });
+                                        toast.success("You're a creator now!");
+                                        await refresh();
+                                        load();
+                                    } catch {
+                                        toast.error("Could not upgrade");
+                                    }
+                                }}
+                                className="rounded-full"
+                                data-testid="upgrade-creator-btn"
+                            >
+                                Become a creator
+                            </Button>
+                        )}
                     </div>
                     <div className="mt-4 flex items-center gap-6 text-sm">
                         <div>

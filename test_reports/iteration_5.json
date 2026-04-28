@@ -1,0 +1,48 @@
+{
+  "summary": "Iter5 review of Skiller role split (student/creator). Backend: created /app/backend/tests/test_iter5.py with 42 new pytest cases covering register-role validation, login role propagation, /users/me/enrollments + /applications, /upgrade-role, gigs CRUD + applicants + status transitions (creator/owner-only), /posts/reels (only videos, sorted), /posts/subscriptions (auth + following filter), /dashboard/insights (30-day series + top_posts/top_courses/ads/totals; 403 for student), /dashboard/crm (gigs+applications, courses+enrollments, summary; 403 for student), and a regression smoke for feed/explore/courses/gigs/leaderboard/search/dashboard-stats/notifications/users-me-xp. Result: 42/42 iter5 PASS; full regression 122/122 PASS in ~71s (includes iter2 + iter3 + iter4 + iter5). Frontend: Playwright e2e on preview URL — registered a fresh student via /register with data-testid='role-selector' (role-student & role-creator visible), redirected to /home, /home renders data-testid='student-home', sidebar shows nav-reels + nav-learning and hides nav-dashboard/insights/crm. /reels renders data-testid='reels-page' with 3 video elements as expected. /learning renders data-testid='learning-page'. CreatorOnly guards confirmed: visiting /dashboard, /insights, /crm as a student all redirect to /home. Profile page shows data-testid='upgrade-creator-btn' for student-self. Logged into Maya (creator): full creator nav (nav-dashboard/insights/crm) present, student-only items hidden; /insights renders data-testid='insights-page'; /crm renders data-testid='crm-page' and clicking 'New gig' opens data-testid='new-gig-dialog'. Brand color --primary='0 74% 42%' (light) confirmed. Frontend score: 15/16 — single FAIL is the post-login destination for creators: Login.jsx navigates to /feed instead of /dashboard (spec says creator→/dashboard).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Creator login redirect", "issue": "After successful login as a creator, Login.jsx (line 25) navigates to /feed instead of /dashboard. Spec says 'creator → /dashboard, student → /home'. Student redirect is correct; only creator/admin path is wrong.", "affected_selectors": ["[data-testid=\"login-submit-btn\"]"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter5.py",
+    "/app/backend/tests/test_iter4.py",
+    "/app/backend/tests/test_iter3.py",
+    "/app/backend/tests/test_iter2.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/iter5_results.xml",
+    "/app/test_reports/pytest/all_iter5_results.xml"
+  ],
+  "action_items": [
+    "FIX Login.jsx: change `navigate(user?.role === 'creator' || user?.role === 'admin' ? '/feed' : '/home')` to `navigate((user?.role === 'creator' || user?.role === 'admin') ? '/dashboard' : '/home')` so creators land on /dashboard per spec.",
+    "(Carry-over from iter4) Two visible search-input elements (mobile + desktop) share data-testid='search-input' — disambiguate to '-desktop' / '-mobile'.",
+    "(Carry-over) Add Mongo TTL index on password_reset_tokens.expires_at; gate PASSWORD_RESET_LINK log behind APP_ENV != production.",
+    "(Carry-over) Mongo text indexes for /api/search to scale beyond seed-size."
+  ],
+  "critical_code_review_comments": [
+    "routers/users.py upgrade-role: silently no-ops admins (returns user unchanged) — fine, but should also reject if user is already 'creator' to avoid pointless DB write; trivial nit.",
+    "routers/gigs.py PATCH/DELETE use get_current_user but spec wording said 'updates only by owner' — implementation is correct (403 for non-owner) and admin override is permitted, which is acceptable.",
+    "routers/dashboard.py /insights computes series in Python over the last 30 days; uses datetime.fromisoformat() with timezone-aware created_at — note that .date() drops timezone, so posts created near UTC midnight may bucket to the wrong day for non-UTC viewers. Acceptable.",
+    "routers/posts.py /subscriptions uses current['following'] from the JWT-decoded user snapshot taken in get_current_user; if a user follows new accounts after token issue, snapshot is from DB at request time (good — we re-query). No issue.",
+    "core.RoleUpgradeIn restricts to 'creator' only (no downgrade) — correct per spec.",
+    "Login.jsx creator post-login lands on /feed instead of /dashboard — contradicts iteration5 spec; see action_items.",
+    "Reels uses HTML5 <video> without controls visible by default in some browsers; verified 3 video elements exist on /reels (autoplay disabled in headless is expected, not a bug)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter5.py",
+    "/app/test_reports/pytest/iter5_results.xml",
+    "/app/test_reports/pytest/all_iter5_results.xml",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {"backend": "100% (122/122 incl. all prior + 42 iter5)", "frontend": "94% (15/16) — only creator post-login redirect target is wrong"},
+  "test_credentials": "admin@skiller.app/Admin@123, maya@skiller.app/Demo@123, arjun@skiller.app/Demo@123, neha@skiller.app/Demo@123 — all confirmed working at end of run. Demo passwords NOT modified by iter5 tests.",
+  "seed_data_creation": "Iter5 backend tests register ~6 disposable TEST_*@skiller.app accounts and create one gig 'TEST_iter5_gig' under Maya which is deleted in test_delete_gig_cascades_applications. UI test creates one TEST_uifs_*@skiller.app student account that remains in DB. Maya gains one new follower (the disposable student) — non-destructive.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/all.xml -> 122 passing in ~70s. The only frontend bug is one line in /app/frontend/src/pages/Login.jsx (post-login redirect target for creators is /feed; should be /dashboard). After main agent fixes, re-test by logging in as Maya and asserting page.url ends with /dashboard, plus visiting /home as Maya should NOT auto-redirect (creators can still view /home if HomeRoute permits). Brand color and CreatorOnly guards verified working. Reels page uses 3 seeded video posts; HTML5 autoplay is denied in headless — count `video` elements instead.",
+  "rca of the issue": "Login.jsx ternary branches creators to /feed instead of /dashboard. Likely a copy-paste from a pre-iter5 version of the redirect. One-line fix. All backend role enforcement (require_creator dependency on /api/dashboard/insights, /api/dashboard/crm, /api/gigs POST, /api/gigs/mine, plus owner-only checks on PATCH/DELETE/applicants) is correctly implemented and verified in tests."
+}

@@ -8,6 +8,7 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { formatApiError } from "../lib/api";
 import ThemeToggle from "../components/ThemeToggle";
+import { GraduationCap, Briefcase } from "lucide-react";
 
 export default function Register() {
     const { register } = useAuth();
@@ -17,6 +18,7 @@ export default function Register() {
         username: "",
         email: "",
         password: "",
+        role: "student",
     });
     const [loading, setLoading] = useState(false);
 
@@ -26,9 +28,9 @@ export default function Register() {
         e.preventDefault();
         setLoading(true);
         try {
-            await register(form);
+            const user = await register(form);
             toast.success("Welcome to Skiller!");
-            navigate("/feed");
+            navigate(user?.role === "creator" ? "/dashboard" : "/home");
         } catch (err) {
             toast.error(formatApiError(err.response?.data?.detail) || "Sign up failed");
         } finally {
@@ -56,9 +58,29 @@ export default function Register() {
                         </Link>
                     </p>
 
-                    <form onSubmit={submit} className="mt-8 space-y-4">
+                    {/* Role selector */}
+                    <div className="mt-6 grid grid-cols-2 gap-3" data-testid="role-selector">
+                        <RoleCard
+                            label="Student"
+                            description="Learn skills, watch reels, take courses."
+                            icon={GraduationCap}
+                            active={form.role === "student"}
+                            onClick={() => set("role", "student")}
+                            tid="role-student"
+                        />
+                        <RoleCard
+                            label="Creator / Institution"
+                            description="Teach, post gigs, run ads, run a CRM."
+                            icon={Briefcase}
+                            active={form.role === "creator"}
+                            onClick={() => set("role", "creator")}
+                            tid="role-creator"
+                        />
+                    </div>
+
+                    <form onSubmit={submit} className="mt-6 space-y-4">
                         <div className="space-y-1.5">
-                            <Label htmlFor="name">Full name</Label>
+                            <Label htmlFor="name">{form.role === "creator" ? "Brand or full name" : "Full name"}</Label>
                             <Input
                                 id="name"
                                 required
@@ -119,7 +141,9 @@ export default function Register() {
                             className="h-11 w-full rounded-full"
                             data-testid="register-submit-btn"
                         >
-                            {loading ? "Creating account…" : "Create account"}
+                            {loading
+                                ? "Creating account…"
+                                : `Create ${form.role === "creator" ? "creator" : "student"} account`}
                         </Button>
                     </form>
                 </div>
@@ -144,5 +168,28 @@ export default function Register() {
                 </div>
             </div>
         </div>
+    );
+}
+
+function RoleCard({ label, description, icon: Icon, active, onClick, tid }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            data-testid={tid}
+            className={`flex flex-col items-start gap-2 rounded-2xl border p-3 text-left transition-all ${
+                active
+                    ? "border-primary bg-primary/5 ring-2 ring-primary"
+                    : "border-border hover:border-primary/40"
+            }`}
+        >
+            <Icon size={18} className={active ? "text-primary" : "text-muted-foreground"} />
+            <div>
+                <div className="text-sm font-semibold">{label}</div>
+                <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                    {description}
+                </div>
+            </div>
+        </button>
     );
 }

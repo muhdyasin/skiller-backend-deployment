@@ -1,5 +1,6 @@
-"""Posts, comments, likes."""
+"""Posts, comments, likes, plus reels + subscriptions feeds."""
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 
@@ -52,6 +53,27 @@ async def explore(request: Request, limit: int = 60):
     posts = await db.posts.find({}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     viewer_id = viewer["id"] if viewer else None
     return [await enrich_post(p, viewer_id) for p in posts]
+
+
+@router.get("/reels")
+async def reels(request: Request, limit: int = 50):
+    viewer = await maybe_current_user(request)
+    posts = await db.posts.find(
+        {"media_type": "video"}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    viewer_id = viewer["id"] if viewer else None
+    return [await enrich_post(p, viewer_id) for p in posts]
+
+
+@router.get("/subscriptions")
+async def subscriptions(limit: int = 30, current=Depends(get_current_user)):
+    following = current.get("following", [])
+    if not following:
+        return []
+    posts = await db.posts.find(
+        {"user_id": {"$in": following}}, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    return [await enrich_post(p, current["id"]) for p in posts]
 
 
 @router.get("/{post_id}")

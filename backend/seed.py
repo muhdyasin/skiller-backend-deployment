@@ -43,6 +43,87 @@ async def seed():
         {"$set": {"xp": 0, "badges": [], "streak": 0, "last_login_date": None}},
     )
 
+    # Migrate role: legacy "user" -> "student"
+    await db.users.update_many({"role": "user"}, {"$set": {"role": "student"}})
+    # Promote demo accounts to "creator"
+    await db.users.update_many(
+        {"email": {"$in": ["maya@skiller.app", "arjun@skiller.app", "neha@skiller.app"]}},
+        {"$set": {"role": "creator"}},
+    )
+
+    # Backfill ownership on legacy gigs/courses that pre-date the role split
+    creator_emails = {
+        "maya@skiller.app": "maya",
+        "arjun@skiller.app": "arjun",
+        "neha@skiller.app": "neha",
+    }
+    creator_lookup = {}
+    async for u in db.users.find(
+        {"email": {"$in": list(creator_emails)}}, {"id": 1, "email": 1, "username": 1, "name": 1}
+    ):
+        creator_lookup[u["username"]] = u
+    admin_doc = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1, "username": 1, "name": 1})
+
+    # Map gig titles → owner usernames
+    gig_owner_map = {
+        "Landing page in React + Tailwind": "admin",
+        "Logo + Brand identity for D2C brand": "maya",
+        "Instagram content calendar (30 days)": "maya",
+        "Python automation for lead scraping": "arjun",
+        "Product strategy consulting (4 hrs)": "neha",
+    }
+    async for g in db.gigs.find({"owner_id": {"$exists": False}}):
+        owner = gig_owner_map.get(g.get("title"), "admin")
+        if owner == "admin" and admin_doc:
+            update = {
+                "owner_id": admin_doc["id"],
+                "owner_username": admin_doc["username"],
+                "owner_name": admin_doc["name"],
+            }
+        elif owner in creator_lookup:
+            u = creator_lookup[owner]
+            update = {"owner_id": u["id"], "owner_username": u["username"], "owner_name": u["name"]}
+        else:
+            continue
+        await db.gigs.update_one({"id": g["id"]}, {"$set": update})
+
+    # Backfill course owner_id by instructor name
+    instructor_to_username = {
+        "Maya Sharma": "maya",
+        "Arjun Verma": "arjun",
+        "Neha Iyer": "neha",
+    }
+    async for c in db.courses.find({"owner_id": {"$in": [None, ""]}}):
+        owner_username = instructor_to_username.get(c.get("instructor"))
+        if owner_username and owner_username in creator_lookup:
+            await db.courses.update_one(
+                {"id": c["id"]},
+                {"$set": {"owner_id": creator_lookup[owner_username]["id"]}},
+            )
+
+    # Add reel-style video posts if none exist
+    if await db.posts.count_documents({"media_type": "video"}) == 0:
+        reel_posts = [
+            ("maya", "Quick design tip: spacing system in 3 numbers.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", ["design", "tip", "reel"]),
+            ("arjun", "Speed-coding a button component. React + Tailwind, no library.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", ["code", "react", "reel"]),
+            ("neha", "PM frameworks in 60 seconds — RICE prioritisation.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", ["product", "pm", "reel"]),
+        ]
+        for username, caption, media, tags in reel_posts:
+            user = creator_lookup.get(username)
+            if not user:
+                continue
+            await db.posts.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": user["id"],
+                "caption": caption,
+                "media": media,
+                "media_type": "video",
+                "tags": tags,
+                "likes": [],
+                "comments": [],
+                "created_at": now_iso(),
+            })
+
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@skiller.app")
     admin_pw = os.environ.get("ADMIN_PASSWORD", "Admin@123")
     existing = await db.users.find_one({"email": admin_email})
@@ -82,17 +163,21 @@ async def seed():
 
     if await db.posts.count_documents({}) == 0:
         demo_posts = [
-            ("maya", "Shipped a new design system today. Reds and whites — clean, calm, scalable.", DEMO_POST_IMAGES[0], ["design", "systems"]),
-            ("arjun", "Built a mini Instagram clone in 4 hours using React + FastAPI. Tutorial dropping this weekend.", DEMO_POST_IMAGES[1], ["react", "fastapi", "tutorial"]),
-            ("neha", "Three frameworks I use to decide what NOT to build. Saved us 6 months last quarter.", DEMO_POST_IMAGES[2], ["product", "strategy"]),
-            ("maya", "Typography is 90% of good UI. Here's the exact scale I use on every project.", DEMO_POST_IMAGES[3], ["typography", "ui"]),
-            ("arjun", "Landed my first ₹50k freelance gig through Skiller gigs marketplace. It works.", DEMO_POST_IMAGES[4], ["freelance", "win"]),
-            ("neha", "Weekend read: how to price yourself without undercutting your worth.", DEMO_POST_IMAGES[5], ["career"]),
+            ("maya", "Shipped a new design system today. Reds and whites — clean, calm, scalable.", DEMO_POST_IMAGES[0], "image", ["design", "systems"]),
+            ("arjun", "Built a mini Instagram clone in 4 hours using React + FastAPI. Tutorial dropping this weekend.", DEMO_POST_IMAGES[1], "image", ["react", "fastapi", "tutorial"]),
+            ("neha", "Three frameworks I use to decide what NOT to build. Saved us 6 months last quarter.", DEMO_POST_IMAGES[2], "image", ["product", "strategy"]),
+            ("maya", "Typography is 90% of good UI. Here's the exact scale I use on every project.", DEMO_POST_IMAGES[3], "image", ["typography", "ui"]),
+            ("arjun", "Landed my first ₹50k freelance gig through Skiller gigs marketplace. It works.", DEMO_POST_IMAGES[4], "image", ["freelance", "win"]),
+            ("neha", "Weekend read: how to price yourself without undercutting your worth.", DEMO_POST_IMAGES[5], "image", ["career"]),
+            # Reels (vertical videos) — short stock samples
+            ("maya", "Quick 30-sec design tip: spacing system in 3 numbers.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4", "video", ["design", "tip", "reel"]),
+            ("arjun", "Speed-coding a button component. React + Tailwind, no library.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4", "video", ["code", "react", "reel"]),
+            ("neha", "PM frameworks in 60 seconds — RICE prioritisation explained.", "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4", "video", ["product", "pm", "reel"]),
         ]
-        for username, caption, media, tags in demo_posts:
+        for username, caption, media, mtype, tags in demo_posts:
             await db.posts.insert_one({
                 "id": str(uuid.uuid4()), "user_id": user_ids[username],
-                "caption": caption, "media": media, "media_type": "image",
+                "caption": caption, "media": media, "media_type": mtype,
                 "tags": tags, "likes": [], "comments": [], "created_at": now_iso(),
             })
 
@@ -113,17 +198,36 @@ async def seed():
 
     if await db.gigs.count_documents({}) == 0:
         gigs = [
-            ("Landing page in React + Tailwind", "Need a clean conversion-focused landing page for a SaaS.", 25000, "Remote", "Web Development", ["React", "Tailwind"]),
-            ("Logo + Brand identity for D2C brand", "Full brand identity kit — logo, type, palette, usage.", 40000, "Remote", "Design", ["Logo", "Branding"]),
-            ("Instagram content calendar (30 days)", "Plan and design 30 reels + carousel posts for a coaching brand.", 15000, "Remote", "Content", ["Social", "Design"]),
-            ("Python automation for lead scraping", "Scrape LinkedIn + clean into Google Sheets daily.", 20000, "Remote", "Development", ["Python", "Automation"]),
-            ("Product strategy consulting (4 hrs)", "Help us pick the right v1 scope for our healthtech app.", 18000, "Remote", "Product", ["Strategy"]),
+            ("admin", "Landing page in React + Tailwind", "Need a clean conversion-focused landing page for a SaaS.", 25000, "Remote", "Web Development", ["React", "Tailwind"]),
+            ("maya", "Logo + Brand identity for D2C brand", "Full brand identity kit — logo, type, palette, usage.", 40000, "Remote", "Design", ["Logo", "Branding"]),
+            ("maya", "Instagram content calendar (30 days)", "Plan and design 30 reels + carousel posts for a coaching brand.", 15000, "Remote", "Content", ["Social", "Design"]),
+            ("arjun", "Python automation for lead scraping", "Scrape LinkedIn + clean into Google Sheets daily.", 20000, "Remote", "Development", ["Python", "Automation"]),
+            ("neha", "Product strategy consulting (4 hrs)", "Help us pick the right v1 scope for our healthtech app.", 18000, "Remote", "Product", ["Strategy"]),
         ]
-        for title, desc, budget, location, cat, skills in gigs:
+        # Resolve admin id
+        admin_doc = await db.users.find_one({"role": "admin"}, {"_id": 0, "id": 1, "username": 1, "name": 1})
+        admin_id = admin_doc["id"] if admin_doc else ""
+        for owner_username, title, desc, budget, location, cat, skills in gigs:
+            if owner_username == "admin":
+                oid, ouname, oname = admin_id, admin_doc["username"] if admin_doc else "admin", admin_doc["name"] if admin_doc else "Skiller Admin"
+            else:
+                oid = user_ids.get(owner_username, "")
+                u_doc = await db.users.find_one({"id": oid}, {"_id": 0, "username": 1, "name": 1})
+                ouname = u_doc["username"] if u_doc else owner_username
+                oname = u_doc["name"] if u_doc else owner_username
             await db.gigs.insert_one({
-                "id": str(uuid.uuid4()), "title": title, "description": desc,
-                "budget": budget, "currency": "INR", "location": location,
-                "category": cat, "skills": skills, "created_at": now_iso(),
+                "id": str(uuid.uuid4()),
+                "owner_id": oid,
+                "owner_username": ouname,
+                "owner_name": oname,
+                "title": title,
+                "description": desc,
+                "budget": budget,
+                "currency": "INR",
+                "location": location,
+                "category": cat,
+                "skills": skills,
+                "created_at": now_iso(),
             })
 
 

@@ -52,7 +52,7 @@ async def register(data: RegisterIn):
         "id": user_id, "email": email, "username": data.username.lower().strip(),
         "name": data.name.strip(), "password_hash": hash_password(data.password),
         "bio": "", "avatar_url": "", "followers": [], "following": [],
-        "role": "user", "xp": 0, "badges": [], "streak": 0,
+        "role": data.role, "xp": 0, "badges": [], "streak": 0,
         "last_login_date": None, "created_at": now_iso(),
     }
     await db.users.insert_one(doc)

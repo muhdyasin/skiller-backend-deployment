@@ -63,7 +63,7 @@ export default function Landing() {
                                 Join Skiller <ArrowRight size={18} className="ml-1" />
                             </Button>
                         </Link>
-                        <Link to="/feed">
+                        <Link to="/home">
                             <Button size="lg" variant="outline" className="rounded-full px-6" data-testid="hero-cta-feed">
                                 Explore the feed
                             </Button>

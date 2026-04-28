@@ -20,9 +20,9 @@ export default function Login() {
         e.preventDefault();
         setLoading(true);
         try {
-            await login(email, password);
+            const user = await login(email, password);
             toast.success("Welcome back!");
-            navigate("/feed");
+            navigate(user?.role === "creator" || user?.role === "admin" ? "/feed" : "/home");
         } catch (err) {
             toast.error(formatApiError(err.response?.data?.detail) || "Login failed");
         } finally {

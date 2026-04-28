@@ -22,6 +22,11 @@ import Leaderboard from "./pages/Leaderboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Search from "./pages/Search";
+import StudentHome from "./pages/StudentHome";
+import Reels from "./pages/Reels";
+import Learning from "./pages/Learning";
+import Insights from "./pages/Insights";
+import CRM from "./pages/CRM";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -35,7 +40,36 @@ const Protected = ({ children }) => {
     return children;
 };
 
+const CreatorOnly = ({ children }) => {
+    const { user, loading } = useAuth();
+    if (loading)
+        return (
+            <div className="grid min-h-screen place-items-center text-muted-foreground">
+                Loading…
+            </div>
+        );
+    if (!user) return <Navigate to="/login" replace />;
+    if (user.role !== "creator" && user.role !== "admin") {
+        return <Navigate to="/home" replace />;
+    }
+    return children;
+};
+
 const Shell = ({ children }) => <Layout>{children}</Layout>;
+
+const HomeRoute = () => {
+    const { user } = useAuth();
+    const isCreator = user?.role === "creator" || user?.role === "admin";
+    return isCreator ? (
+        <Shell>
+            <Feed />
+        </Shell>
+    ) : (
+        <Shell>
+            <StudentHome />
+        </Shell>
+    );
+};
 
 function AppRoutes() {
     const { loading } = useAuth();
@@ -52,7 +86,11 @@ function AppRoutes() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+
+            {/* Role-aware home */}
+            <Route path="/home" element={<HomeRoute />} />
             <Route path="/feed" element={<Shell><Feed /></Shell>} />
+            <Route path="/reels" element={<Shell><Reels /></Shell>} />
             <Route path="/explore" element={<Shell><Explore /></Shell>} />
             <Route
                 path="/upload"
@@ -69,6 +107,14 @@ function AppRoutes() {
             <Route path="/leaderboard" element={<Shell><Leaderboard /></Shell>} />
             <Route path="/search" element={<Shell><Search /></Shell>} />
             <Route
+                path="/learning"
+                element={
+                    <Protected>
+                        <Shell><Learning /></Shell>
+                    </Protected>
+                }
+            />
+            <Route
                 path="/notifications"
                 element={
                     <Protected>
@@ -79,9 +125,25 @@ function AppRoutes() {
             <Route
                 path="/dashboard"
                 element={
-                    <Protected>
+                    <CreatorOnly>
                         <Shell><Dashboard /></Shell>
-                    </Protected>
+                    </CreatorOnly>
+                }
+            />
+            <Route
+                path="/insights"
+                element={
+                    <CreatorOnly>
+                        <Shell><Insights /></Shell>
+                    </CreatorOnly>
+                }
+            />
+            <Route
+                path="/crm"
+                element={
+                    <CreatorOnly>
+                        <Shell><CRM /></Shell>
+                    </CreatorOnly>
                 }
             />
             <Route path="*" element={<Navigate to="/" replace />} />

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from core import (
     db, get_current_user, get_user_by_id, maybe_current_user, award_xp,
-    compute_level, BADGE_DEFS, ProfileUpdate,
+    compute_level, BADGE_DEFS, ProfileUpdate, RoleUpgradeIn,
 )
 from notifications_service import create_notification
 
@@ -56,6 +56,14 @@ async def update_profile(data: ProfileUpdate, current=Depends(get_current_user))
     return await get_user_by_id(current["id"])
 
 
+@router.post("/users/me/upgrade-role")
+async def upgrade_role(data: RoleUpgradeIn, current=Depends(get_current_user)):
+    if current.get("role") == "admin":
+        return await get_user_by_id(current["id"])
+    await db.users.update_one({"id": current["id"]}, {"$set": {"role": data.role}})
+    return await get_user_by_id(current["id"])
+
+
 @router.get("/users")
 async def list_users(limit: int = 20):
     return await db.users.find({}, {"_id": 0, "password_hash": 0}).limit(limit).to_list(limit)
@@ -74,6 +82,24 @@ async def my_xp(current=Depends(get_current_user)):
         "all_badges": BADGE_DEFS,
         "recent_events": await db.xp_events.find({"user_id": current["id"]}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20),
     }
+
+
+@router.get("/users/me/enrollments")
+async def my_enrollments(current=Depends(get_current_user)):
+    enrolls = await db.enrollments.find({"user_id": current["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    course_ids = [e["course_id"] for e in enrolls]
+    courses = await db.courses.find({"id": {"$in": course_ids}}, {"_id": 0}).to_list(200)
+    course_map = {c["id"]: c for c in courses}
+    return [course_map[cid] for cid in course_ids if cid in course_map]
+
+
+@router.get("/users/me/applications")
+async def my_applications(current=Depends(get_current_user)):
+    apps = await db.applications.find({"user_id": current["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    gig_ids = [a["gig_id"] for a in apps]
+    gigs = await db.gigs.find({"id": {"$in": gig_ids}}, {"_id": 0}).to_list(200)
+    gig_map = {g["id"]: g for g in gigs}
+    return [{**a, "gig": gig_map.get(a["gig_id"])} for a in apps]
 
 
 @router.get("/leaderboard")

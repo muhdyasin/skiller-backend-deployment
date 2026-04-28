@@ -1,44 +1,48 @@
 # Skiller — PRD
 
 ## Problem Statement (verbatim)
-> https://gamma.app/docs/excue4og8dptp7u — create the fully functional front end and backend with upload section, day and night theme, Instagram-like UI. App name: Skiller. Modern minimalist blue/white/black palette.
+> https://gamma.app/docs/excue4og8dptp7u — Instagram-like learn-to-earn app called Skiller, with upload section, day/night theme, modern minimalist palette.
 
 ## Vision
-Skiller is India's Instagram-like learn-to-earn social network. Learners share skill content, discover courses, apply for freelance gigs, level up via XP/badges, and creators run their own ads — all in one place.
+India's Instagram-style learn-to-earn social network. Creators post skill content, run paid courses, run ads; learners discover, follow, level up via XP/badges, and apply for freelance gigs.
 
-## Implemented (cumulative through Iteration 3 — Feb 2026)
+## Implemented (cumulative, Iter 1 → 4 — Feb 2026)
 
-### v1
-- JWT auth, feed, upload, profiles, follow, like, comment
-- Courses + Gigs (browse + apply)
-- Day/night theme + sidebar/bottom-nav layout
+### v1 — Core social MVP
+- JWT auth, feed, upload (base64), profiles, follow, like, comment
+- Courses + Gigs (browse + apply), day/night theme, sidebar/bottom-nav
 
-### v2
-- Public theme toggle on Login + Register
-- Object storage via Emergent storage API (POST /api/upload, GET /api/files/{path})
-- Post-detail page (/p/:id)
-- In-app notifications (bell + page)
+### v2 — Polish + monetisation hooks
+- Public theme toggle on Login/Register
+- Object storage (Emergent storage API): POST /api/upload + GET /api/files/{path}
+- Post-detail page (/p/:id), in-app notifications (bell + page)
 - AI recommendations (Claude Sonnet 4.5)
 - Creator/Institution Dashboard with Posts/Courses/Ads CRUD
 - Gamification: XP, 9 levels, 10 badges, daily streaks, leaderboard
 
-### v3 (this round)
-- **Real-time WebSocket notifications** — `/api/ws?token=<jwt>` with auto-reconnect + ping/pong; replaces 25 s polling; toast pop-up on each new notification
-- **Media URL allowlist** — POST /api/posts now rejects `data:`, `javascript:`, empty, and other schemes; only `https://`, `http://`, or `/api/files/` accepted
-- **Dashboard data-testids** — `dashboard-tab-overview/posts/courses/ads`, `dashboard-stats-grid`, `ad-slot`
-- **Password reset flow** — `/api/auth/forgot-password` (no enumeration; logs reset link to backend in dev) and `/api/auth/reset-password` with 1-hr token expiry; `/forgot-password` and `/reset-password/:token` pages on frontend; "Forgot password?" link on Login
+### v3 — Realtime + security
+- Real-time WebSocket notifications (replaces 25s polling)
+- Tighter media URL allowlist on POST /api/posts (https/http or /api/files/)
+- Dashboard data-testids
+- Password reset flow (forgot-password + reset-password) — dev-mode console log
+
+### v4 — Email, Push, Search, Refactor, Brand
+- **Email** — `/api/auth/forgot-password` wired to Resend with HTML template (falls back to console log if `RESEND_API_KEY` empty)
+- **Web Push notifications** — Service Worker (`/sw.js`) + auto-generated VAPID keys (persisted in MongoDB); `ensurePushSubscription()` gracefully no-ops when permission denied
+- **Backend refactor** — `server.py` split into `core.py`, `notifications_service.py`, `seed.py`, and `routers/` (auth, users, posts, courses, gigs, ads, dashboard, ai, notifications, files, ws, search, push)
+- **Search bar** — `/api/search?q=` returns users + posts + courses + gigs; debounced dropdown in top header on every page; dedicated `/search` page
+- **Brand color** — primary changed from blue to **Indian red** (`#B91C1C` light / `#DC2626` dark)
 
 ## Testing
-- 52/52 backend pytest passing across iterations 1-3
+- 80/80 backend pytest passing across all four iterations
 - 100% frontend e2e passing
-- Manual WS test (`/tmp/ws_test.py`) confirms realtime delivery
-- Credentials: see `/app/memory/test_credentials.md`
+- Manual WebSocket test (`/tmp/ws_test.py`) confirms realtime notifications
 
 ## Backlog
-- P1: Wire forgot-password to a real email provider (Resend / SendGrid) when user provides API key
-- P1: Web Push notifications (service worker + VAPID) for browser-level push when tab is closed
-- P2: Stripe / Razorpay course checkout
+- P1: Set `RESEND_API_KEY` (user to provide) so password-reset emails actually deliver
+- P1: Add Mongo text indexes for /api/search to scale beyond seed-sized data
+- P1: TTL index on `password_reset_tokens.expires_at`
+- P2: Stripe / Razorpay course checkout (revenue!)
 - P2: Stories / reels
 - P2: DM messaging
-- P2: Search (users, posts, hashtags)
-- P2: Refactor server.py into routers (auth, posts, users, courses, gigs, ads, dashboard, ws)
+- P2: Email verification on signup

@@ -11,6 +11,10 @@ import {
     LogOut,
     LayoutDashboard,
     Trophy,
+    Film,
+    GraduationCap,
+    LineChart,
+    UsersRound,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -20,23 +24,46 @@ import NotificationsBell from "./NotificationsBell";
 import XPBadge from "./XPBadge";
 import SearchBar from "./SearchBar";
 
-const navItems = [
-    { to: "/feed", label: "Home", icon: Home, tid: "nav-home" },
-    { to: "/explore", label: "Explore", icon: Compass, tid: "nav-explore" },
-    { to: "/upload", label: "Upload", icon: PlusSquare, tid: "nav-upload" },
-    { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
-    { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
-];
+function buildNav(role) {
+    const isCreator = role === "creator" || role === "admin";
+    const studentNav = [
+        { to: "/home", label: "Home", icon: Home, tid: "nav-home" },
+        { to: "/reels", label: "Reels", icon: Film, tid: "nav-reels" },
+        { to: "/explore", label: "Explore", icon: Compass, tid: "nav-explore" },
+        { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
+        { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
+        { to: "/learning", label: "My Learning", icon: GraduationCap, tid: "nav-learning" },
+    ];
+    const creatorNav = [
+        { to: "/feed", label: "Feed", icon: Home, tid: "nav-feed" },
+        { to: "/explore", label: "Explore", icon: Compass, tid: "nav-explore" },
+        { to: "/upload", label: "Upload", icon: PlusSquare, tid: "nav-upload" },
+        { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
+        { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
+    ];
+    const creatorOnly = [
+        { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tid: "nav-dashboard" },
+        { to: "/insights", label: "Insights", icon: LineChart, tid: "nav-insights" },
+        { to: "/crm", label: "CRM", icon: UsersRound, tid: "nav-crm" },
+    ];
+    const tail = [
+        { to: "/leaderboard", label: "Leaderboard", icon: Trophy, tid: "nav-leaderboard" },
+    ];
+    return isCreator ? [...creatorNav, ...creatorOnly, ...tail] : [...studentNav, ...tail];
+}
 
-const moreNav = [
-    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tid: "nav-dashboard", auth: true },
-    { to: "/leaderboard", label: "Leaderboard", icon: Trophy, tid: "nav-leaderboard" },
-];
+const MOBILE_BAR_STUDENT = ["/home", "/reels", "/courses", "/gigs"];
+const MOBILE_BAR_CREATOR = ["/feed", "/upload", "/courses", "/dashboard"];
 
 export default function Layout({ children }) {
     const { user, logout } = useAuth();
     const { theme, toggle } = useTheme();
     const navigate = useNavigate();
+
+    const isCreator = user?.role === "creator" || user?.role === "admin";
+    const navItems = buildNav(user?.role);
+    const mobilePaths = isCreator ? MOBILE_BAR_CREATOR : MOBILE_BAR_STUDENT;
+    const mobileItems = navItems.filter((n) => mobilePaths.includes(n.to));
 
     const profilePath = user ? `/u/${user.username}` : "/login";
 
@@ -44,11 +71,16 @@ export default function Layout({ children }) {
         <div className="min-h-screen bg-background text-foreground">
             {/* Desktop sidebar */}
             <aside
-                className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border bg-background p-5 md:flex"
+                className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col overflow-y-auto border-r border-border bg-background p-5 md:flex"
                 data-testid="sidebar"
             >
-                <div className="mb-8">
+                <div className="mb-6">
                     <Logo />
+                    {user && (
+                        <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground" data-testid="role-pill">
+                            {isCreator ? "Creator" : "Student"}
+                        </div>
+                    )}
                 </div>
                 <nav className="flex flex-1 flex-col gap-0.5">
                     {navItems.map(({ to, label, icon: Icon, tid }) => (
@@ -57,7 +89,7 @@ export default function Layout({ children }) {
                             to={to}
                             data-testid={tid}
                             className={({ isActive }) =>
-                                `group flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
+                                `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
                                     isActive
                                         ? "bg-primary text-primary-foreground"
                                         : "text-foreground hover:bg-accent"
@@ -68,25 +100,6 @@ export default function Layout({ children }) {
                             <span>{label}</span>
                         </NavLink>
                     ))}
-                    {moreNav
-                        .filter((it) => !it.auth || user)
-                        .map(({ to, label, icon: Icon, tid }) => (
-                            <NavLink
-                                key={to}
-                                to={to}
-                                data-testid={tid}
-                                className={({ isActive }) =>
-                                    `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
-                                        isActive
-                                            ? "bg-primary text-primary-foreground"
-                                            : "text-foreground hover:bg-accent"
-                                    }`
-                                }
-                            >
-                                <Icon size={18} />
-                                <span>{label}</span>
-                            </NavLink>
-                        ))}
                     <NavLink
                         to={profilePath}
                         data-testid="nav-profile"
@@ -201,7 +214,7 @@ export default function Layout({ children }) {
                 className="glass fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-border px-2 py-2 md:hidden"
                 data-testid="bottom-nav"
             >
-                {navItems.map(({ to, label, icon: Icon, tid }) => (
+                {mobileItems.map(({ to, label, icon: Icon, tid }) => (
                     <NavLink
                         key={to}
                         to={to}

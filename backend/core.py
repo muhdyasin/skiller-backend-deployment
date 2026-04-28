@@ -100,6 +100,13 @@ async def maybe_current_user(request: Request) -> Optional[dict]:
         return None
 
 
+async def require_creator(request: Request) -> dict:
+    user = await get_current_user(request)
+    if user.get("role") not in ("creator", "admin"):
+        raise HTTPException(status_code=403, detail="Creator account required")
+    return user
+
+
 # ---------- XP / Levels / Badges ----------
 LEVEL_THRESHOLDS = [
     (0, "Newbie"), (50, "Spark"), (150, "Apprentice"), (350, "Builder"),
@@ -300,6 +307,15 @@ class RegisterIn(BaseModel):
     password: str = Field(min_length=6)
     name: str
     username: str
+    role: str = "student"
+
+    @field_validator("role")
+    @classmethod
+    def _validate_role(cls, v: str) -> str:
+        v = (v or "student").lower().strip()
+        if v not in {"student", "creator"}:
+            raise ValueError("role must be 'student' or 'creator'")
+        return v
 
 
 class LoginIn(BaseModel):
@@ -345,6 +361,46 @@ class ProfileUpdate(BaseModel):
 
 class GigApply(BaseModel):
     message: str = ""
+
+
+class GigCreate(BaseModel):
+    title: str
+    description: str
+    budget: int = 0
+    location: str = "Remote"
+    category: str = "General"
+    skills: List[str] = []
+
+
+class GigUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    budget: Optional[int] = None
+    location: Optional[str] = None
+    category: Optional[str] = None
+    skills: Optional[List[str]] = None
+
+
+class ApplicationStatusIn(BaseModel):
+    status: str  # pending|shortlisted|hired|rejected
+
+    @field_validator("status")
+    @classmethod
+    def _validate_status(cls, v: str) -> str:
+        if v not in {"pending", "shortlisted", "hired", "rejected"}:
+            raise ValueError("invalid status")
+        return v
+
+
+class RoleUpgradeIn(BaseModel):
+    role: str  # creator only
+
+    @field_validator("role")
+    @classmethod
+    def _validate(cls, v: str) -> str:
+        if v != "creator":
+            raise ValueError("Only upgrade to 'creator' is supported")
+        return v
 
 
 class CourseCreate(BaseModel):
