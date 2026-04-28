@@ -6,44 +6,39 @@
 ## Vision
 Skiller is India's Instagram-like learn-to-earn social network. Learners share skill content, discover courses, apply for freelance gigs, level up via XP/badges, and creators run their own ads — all in one place.
 
-## User Personas
-- Learner: discovers skills, follows creators, takes courses, lands gigs, levels up.
-- Creator / Mentor: posts content, runs courses, runs ads, builds audience.
-- Institution: posts long-form courses + ads to reach learners.
+## Implemented (cumulative through Iteration 3 — Feb 2026)
 
-## Implemented (v2 — Feb 2026)
-
-### v1 (already shipped)
+### v1
 - JWT auth, feed, upload, profiles, follow, like, comment
 - Courses + Gigs (browse + apply)
 - Day/night theme + sidebar/bottom-nav layout
 
-### v2 (this round)
-- **Public theme toggle** on Login + Register
-- **Object storage** (Emergent storage API) for images + videos via `/api/upload` and `/api/files/{path}` with content-type aware streaming
-- **Post-detail page** (`/p/:postId`) — full media, comments, like
-- **In-app notifications** — bell with badge, dropdown, dedicated page; auto-generated on like/comment/follow/badge
-- **AI recommendations** (Claude Sonnet 4.5 via emergentintegrations) — `/api/ai/recommend` returns personalised courses/gigs/creators with reasoning; rendered as Smart Picks in feed sidebar
-- **Creator/Institution Dashboard** (`/dashboard`) — stats overview, posts management, courses CRUD, ad campaigns CRUD with pause/resume + impressions/clicks/CTR/spend
-- **Ads** — Sponsored card injected in feed; click tracking; impressions auto-increment on serve
-- **Gamification (XP / Levels / Badges / Streaks)**
-  - 9 levels: Newbie → Spark → Apprentice → Builder → Maker → Pro → Mentor → Master → Legend
-  - 10 badges: First Post, Creator, Liked, Beloved, Conversationalist, Connector, Earner, Scholar, On Fire (3-day streak), Week Warrior (7-day streak)
-  - XP awarded for posts (20), comments (5/3), likes (1/2), follow (1/5), course enroll (10), gig apply (15), daily login (5)
-  - Leaderboard page with top creators sorted by XP
+### v2
+- Public theme toggle on Login + Register
+- Object storage via Emergent storage API (POST /api/upload, GET /api/files/{path})
+- Post-detail page (/p/:id)
+- In-app notifications (bell + page)
+- AI recommendations (Claude Sonnet 4.5)
+- Creator/Institution Dashboard with Posts/Courses/Ads CRUD
+- Gamification: XP, 9 levels, 10 badges, daily streaks, leaderboard
+
+### v3 (this round)
+- **Real-time WebSocket notifications** — `/api/ws?token=<jwt>` with auto-reconnect + ping/pong; replaces 25 s polling; toast pop-up on each new notification
+- **Media URL allowlist** — POST /api/posts now rejects `data:`, `javascript:`, empty, and other schemes; only `https://`, `http://`, or `/api/files/` accepted
+- **Dashboard data-testids** — `dashboard-tab-overview/posts/courses/ads`, `dashboard-stats-grid`, `ad-slot`
+- **Password reset flow** — `/api/auth/forgot-password` (no enumeration; logs reset link to backend in dev) and `/api/auth/reset-password` with 1-hr token expiry; `/forgot-password` and `/reset-password/:token` pages on frontend; "Forgot password?" link on Login
 
 ## Testing
-- 36/36 backend pytest passing (iter 1: 17, iter 2: 19)
+- 52/52 backend pytest passing across iterations 1-3
 - 100% frontend e2e passing
-- See `/app/memory/test_credentials.md`
+- Manual WS test (`/tmp/ws_test.py`) confirms realtime delivery
+- Credentials: see `/app/memory/test_credentials.md`
 
 ## Backlog
-- P1: Real-time notifications (WebSocket / SSE) instead of 25s polling
-- P1: Rich post detail with permalink share, OG tags
-- P1: Media validation on POST /api/posts (only allow /api/files/ or https URLs)
-- P2: Stripe / Razorpay course checkout (revenue!)
-- P2: Stories / short-form video reels
+- P1: Wire forgot-password to a real email provider (Resend / SendGrid) when user provides API key
+- P1: Web Push notifications (service worker + VAPID) for browser-level push when tab is closed
+- P2: Stripe / Razorpay course checkout
+- P2: Stories / reels
 - P2: DM messaging
-- P2: Email + push notifications
-- P2: Email verification + password reset flow
 - P2: Search (users, posts, hashtags)
+- P2: Refactor server.py into routers (auth, posts, users, courses, gigs, ads, dashboard, ws)

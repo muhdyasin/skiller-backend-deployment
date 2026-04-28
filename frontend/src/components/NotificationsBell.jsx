@@ -56,6 +56,14 @@ export default function NotificationsBell() {
 
         const connect = () => {
             if (!alive) return;
+            // Avoid double-connect during React StrictMode double-mount
+            if (
+                wsRef.current &&
+                (wsRef.current.readyState === WebSocket.OPEN ||
+                    wsRef.current.readyState === WebSocket.CONNECTING)
+            ) {
+                return;
+            }
             const ws = new WebSocket(wsUrl);
             wsRef.current = ws;
             ws.onopen = () => {
@@ -92,7 +100,13 @@ export default function NotificationsBell() {
             alive = false;
             clearInterval(pingTimer);
             clearTimeout(reconnectTimer);
-            try { wsRef.current?.close(); } catch {}
+            const ws = wsRef.current;
+            if (ws) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    try { ws.close(1000, "unmount"); } catch {}
+                }
+                wsRef.current = null;
+            }
         };
     }, [user?.id, fetchCount]); // eslint-disable-line
 

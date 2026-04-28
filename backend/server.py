@@ -515,6 +515,7 @@ async def reset_password(data: ResetPasswordIn):
 # ---------- WEBSOCKET ----------
 @app.websocket("/api/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+    await websocket.accept()
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
         user_id = payload["sub"]
@@ -526,11 +527,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         await websocket.close(code=4401)
         return
 
-    await ws_manager.connect(user_id, websocket)
+    async with ws_manager.lock:
+        ws_manager.connections.setdefault(user_id, set()).add(websocket)
     try:
         await websocket.send_json({"type": "connected", "user_id": user_id})
         while True:
-            # Keepalive — read & ignore client pings
             msg = await websocket.receive_text()
             if msg == "ping":
                 await websocket.send_text("pong")
