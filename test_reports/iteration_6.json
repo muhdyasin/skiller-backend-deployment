@@ -1,0 +1,37 @@
+{
+  "summary": "Iter6 review for Skiller's 4-part change (per-creator storefront, TTL index on password_reset_tokens, text indexes on users/posts/courses/gigs, search-input testid disambiguation). Backend: created /app/backend/tests/test_iter6.py with 19 new pytest cases. Result 19/19 PASS. Full regression across all iterations: 141/141 PASS in 58s. Specifically verified: GET /api/c/admin, /api/c/maya, /api/c/arjun, /api/c/neha all return 200 with the full storefront payload (user/stats/level/badges/courses/gigs/reels/posts/is_following/is_self), Maya has 1 course, 2 gigs, 1+ reels, 2+ posts as specced; /api/c/<missing> returns 404; payload contains NO _id, NO password_hash, NO followers/following arrays — only counts in stats. Confirmed courses[].enrollments is computed and present. /api/search?q=react returns hybrid results across all 4 buckets via $text index path. /api/search?q=re (2-char) returns >0 results via regex fallback (text-search would return empty). /api/search?q=may regex-falls-back to find user 'maya'. /api/auth/forgot-password now writes both expires_at (ISO string) and expires_at_dt (datetime) — verified directly via PyMongo. TTL index 'expires_at_dt_1' present on password_reset_tokens with expireAfterSeconds key. Reset flow end-to-end (forgot → fetch token → reset → re-login with new password) works via the string-based expires_at parsing path. Text indexes confirmed present on users/posts/courses/gigs collections. Regression: /api/auth/login, /me, /posts/feed (list), /posts/reels (all media_type==video), /dashboard/insights (creator-only — has series + totals), /dashboard/crm all 200. Frontend: Logged in as maya@skiller.app/Demo@123 — POST-LOGIN REDIRECT NOW LANDS ON /dashboard (the iter5 frontend bug is FIXED). /c/maya renders data-testid='creator-storefront'; all four storefront tabs (storefront-tab-courses, -gigs, -reels, -posts) visible and clickable; storefront-follow-btn and storefront-share-btn present. /c/this_doesnt_exist_xyz shows storefront-not-found state. /u/maya now exposes data-testid='view-storefront-link' which navigates to /c/maya. Duplicate-testid fix verified: at desktop viewport (1920x1080) AND mobile (390x844), [data-testid='search-input'] count=0 everywhere; 'search-input-mobile' count=1; 'search-input-desktop' count=1 (both exist in DOM but CSS-hidden per breakpoint — that satisfies the 'each appears at most once' criterion). Smoke tested /feed, /reels, /insights, /crm, /dashboard as Maya — all reachable, no console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter6.py",
+    "/app/test_reports/pytest/iter6_results.xml",
+    "/app/test_reports/pytest/all_iter6_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "/app/backend/routers/users.py:31-85 creator_storefront — payload is well-shaped and excludes _id/password_hash/followers/following arrays; uses count_documents per course for enrollments which is N+1 (fine for current scale: 1-50 courses per creator). If scale grows, switch to a single $facet/aggregation. Also note: storefront accepts admin role (line 41) which is intentional and matches the test for admin's storefront; document that admins can also have storefronts so it's a feature not a leak.",
+    "/app/backend/routers/search.py — _text_then_regex executes two queries when text returns empty; for 4 collections that's up to 8 queries per /api/search call. Acceptable for typeahead but consider parallelizing the four collection lookups via asyncio.gather to halve p95 latency.",
+    "/app/backend/routers/auth.py:81-107 forgot_password — writes both expires_at (string) AND expires_at_dt (datetime). Reset path on line 116 still parses the string. This dual-field design is fine for backward compatibility but cleanup of the legacy 'expires_at' string path can be done once all production tokens have rotated (TTL=1h, so within an hour of deploy).",
+    "/app/backend/routers/auth.py logger.info('PASSWORD_RESET_LINK ...') still logs the full reset link unconditionally — iter5 carry-over action. Recommend gating behind APP_ENV != 'production'. Not a regression, was already noted in iter4/iter5 reports.",
+    "/app/backend/seed.py text_specs — only one text index allowed per collection; existing-conflict path (try/except) keeps old index, which means if someone changes the text spec they must drop the index manually. Add a doctring noting this.",
+    "/app/frontend/src/components/SearchBar.jsx — testid is conditioned on `compact` prop. Both desktop and mobile bars are rendered in DOM at all breakpoints (only CSS-hidden), so the unique-testid invariant relies on the prop being passed correctly from each layout consumer. Verified working in this run on both 1920x1080 and 390x844 viewports.",
+    "Iter5 frontend bug (creator post-login redirect to /feed instead of /dashboard) is FIXED in this iteration — verified Maya now lands on /dashboard."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter6.py",
+    "/app/test_reports/pytest/iter6_results.xml",
+    "/app/test_reports/pytest/all_iter6_results.xml",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {"backend": "100% (141/141 incl. 19 new iter6 + 122 prior)", "frontend": "100% (all storefront, tab, search-id, smoke flows pass)"},
+  "test_credentials": "admin@skiller.app/Admin@123, maya@skiller.app/Demo@123, arjun@skiller.app/Demo@123, neha@skiller.app/Demo@123 — all confirmed working at end of run. Demo passwords NOT mutated (the dual-field-token verification on neha sets used=true on its own throwaway token only).",
+  "seed_data_creation": "Created one disposable student account 'test_iter6_reset_<uuid8>@skiller.app' per run for the reset-flow E2E. Non-destructive; does not modify seed data or existing demo creators.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/all.xml -> 141 passing in ~60s. Iter6 added test_iter6.py covering /api/c/{username} storefront, /api/search hybrid, TTL+text index presence, forgot/reset password dual-field token. Frontend verified at preview URL: /c/<creator> works, /c/<missing> shows not-found, /u/<creator> exposes view-storefront-link. SearchBar duplicate-testid fix is live: 'search-input' is gone, 'search-input-mobile' and 'search-input-desktop' each render exactly once. Iter5 creator-login redirect bug is RESOLVED — Maya post-login → /dashboard. Carry-over (still open from iter4): gate PASSWORD_RESET_LINK info-log behind APP_ENV != production.",
+  "rca of the issue": "No issues found this iteration. The four planned changes are implemented correctly and verified end-to-end."
+}

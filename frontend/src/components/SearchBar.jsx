@@ -68,7 +68,7 @@ export default function SearchBar({ compact, autoFocus }) {
                     onFocus={() => q.trim() && setOpen(true)}
                     onKeyDown={handleKey}
                     placeholder="Search creators, posts, courses, gigs"
-                    data-testid="search-input"
+                    data-testid={compact ? "search-input-mobile" : "search-input-desktop"}
                     className="h-10 w-full rounded-full border border-border bg-secondary/60 pl-9 pr-9 text-sm outline-none ring-primary placeholder:text-muted-foreground focus:bg-background focus:ring-2"
                 />
                 {q && (
@@ -78,7 +78,7 @@ export default function SearchBar({ compact, autoFocus }) {
                             setResults(null);
                         }}
                         className="absolute right-2 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full hover:bg-accent"
-                        data-testid="search-clear-btn"
+                        data-testid={compact ? "search-clear-btn-mobile" : "search-clear-btn-desktop"}
                     >
                         <X size={12} />
                     </button>

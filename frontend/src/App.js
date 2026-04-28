@@ -27,6 +27,7 @@ import Reels from "./pages/Reels";
 import Learning from "./pages/Learning";
 import Insights from "./pages/Insights";
 import CRM from "./pages/CRM";
+import CreatorStorefront from "./pages/CreatorStorefront";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -103,6 +104,7 @@ function AppRoutes() {
             <Route path="/courses" element={<Shell><Courses /></Shell>} />
             <Route path="/gigs" element={<Shell><Gigs /></Shell>} />
             <Route path="/u/:username" element={<Shell><Profile /></Shell>} />
+            <Route path="/c/:username" element={<Shell><CreatorStorefront /></Shell>} />
             <Route path="/p/:postId" element={<Shell><PostDetail /></Shell>} />
             <Route path="/leaderboard" element={<Shell><Leaderboard /></Shell>} />
             <Route path="/search" element={<Shell><Search /></Shell>} />

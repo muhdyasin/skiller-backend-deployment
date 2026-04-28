@@ -116,6 +116,15 @@ export default function Profile() {
                                 Become a creator
                             </Button>
                         )}
+                        {(user.role === "creator" || user.role === "admin") && (
+                            <Link
+                                to={`/c/${user.username}`}
+                                className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+                                data-testid="view-storefront-link"
+                            >
+                                View storefront →
+                            </Link>
+                        )}
                     </div>
                     <div className="mt-4 flex items-center gap-6 text-sm">
                         <div>

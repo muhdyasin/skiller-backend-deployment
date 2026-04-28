@@ -30,13 +30,43 @@ async def seed():
     await db.users.create_index("username", unique=True)
     await db.users.create_index("xp")
     await db.posts.create_index([("created_at", -1)])
+    await db.posts.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.password_reset_tokens.create_index("token", unique=True)
-    await db.password_reset_tokens.create_index("expires_at")
+    # TTL index — Mongo auto-deletes expired tokens. expireAfterSeconds=0
+    # uses the value of `expires_at` itself as the deletion timestamp.
+    # Drop any pre-existing non-TTL index on expires_at first so we can recreate it.
+    try:
+        existing = await db.password_reset_tokens.index_information()
+        if "expires_at_1" in existing and "expireAfterSeconds" not in existing["expires_at_1"]:
+            await db.password_reset_tokens.drop_index("expires_at_1")
+    except Exception:
+        pass
+    await db.password_reset_tokens.create_index("expires_at_dt", expireAfterSeconds=0)
     await db.files.create_index("storage_path")
     await db.ad_campaigns.create_index([("status", 1), ("created_at", -1)])
     await db.push_subscriptions.create_index("subscription.endpoint", unique=True)
     await db.push_subscriptions.create_index([("user_id", 1), ("active", 1)])
+    await db.courses.create_index([("owner_id", 1), ("created_at", -1)])
+    await db.gigs.create_index([("owner_id", 1), ("created_at", -1)])
+    await db.enrollments.create_index([("course_id", 1)])
+    await db.applications.create_index([("gig_id", 1)])
+
+    # Text indexes — power /api/search beyond regex full-scans.
+    # MongoDB allows only ONE text index per collection, so we set them up
+    # idempotently and ignore "already exists" errors.
+    text_specs = [
+        ("users", [("username", "text"), ("name", "text"), ("bio", "text")]),
+        ("posts", [("caption", "text"), ("tags", "text")]),
+        ("courses", [("title", "text"), ("description", "text"), ("category", "text"), ("instructor", "text")]),
+        ("gigs", [("title", "text"), ("description", "text"), ("category", "text"), ("skills", "text")]),
+    ]
+    for coll, spec in text_specs:
+        try:
+            await db[coll].create_index(spec, name=f"{coll}_text_idx", default_language="english")
+        except Exception:
+            # Conflicting/old text index — keep current one rather than crash startup.
+            pass
 
     await db.users.update_many(
         {"xp": {"$exists": False}},

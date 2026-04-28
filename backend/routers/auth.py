@@ -84,12 +84,14 @@ async def forgot_password(data: ForgotPasswordIn):
     user = await db.users.find_one({"email": email})
     if user:
         token = secrets.token_urlsafe(32)
+        expires_dt = now() + timedelta(hours=1)
         await db.password_reset_tokens.insert_one({
             "id": str(uuid.uuid4()),
             "user_id": user["id"],
             "token": token,
             "used": False,
-            "expires_at": (now() + timedelta(hours=1)).isoformat(),
+            "expires_at": expires_dt.isoformat(),
+            "expires_at_dt": expires_dt,  # used by Mongo TTL index
             "created_at": now_iso(),
         })
         link = f"{FRONTEND_URL.rstrip('/')}/reset-password/{token}" if FRONTEND_URL else f"/reset-password/{token}"

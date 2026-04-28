@@ -28,6 +28,64 @@ async def get_user_profile(username: str, request: Request):
     }
 
 
+@router.get("/c/{username}")
+async def creator_storefront(username: str, request: Request):
+    """Public, SEO-friendly creator storefront — courses + gigs + reels +
+    latest posts in one payload. Open to anonymous visitors."""
+    user = await db.users.find_one(
+        {"username": username.lower()},
+        {"_id": 0, "password_hash": 0},
+    )
+    if not user:
+        raise HTTPException(status_code=404, detail="Creator not found")
+    if user.get("role") not in ("creator", "admin"):
+        raise HTTPException(status_code=404, detail="Not a creator")
+
+    courses = await db.courses.find(
+        {"owner_id": user["id"]}, {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    for c in courses:
+        c["enrollments"] = await db.enrollments.count_documents({"course_id": c["id"]})
+
+    gigs = await db.gigs.find(
+        {"owner_id": user["id"]}, {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+
+    reels = await db.posts.find(
+        {"user_id": user["id"], "media_type": "video"}, {"_id": 0},
+    ).sort("created_at", -1).to_list(12)
+    posts = await db.posts.find(
+        {"user_id": user["id"], "media_type": {"$ne": "video"}}, {"_id": 0},
+    ).sort("created_at", -1).to_list(12)
+
+    viewer = await maybe_current_user(request)
+    is_following = bool(viewer and viewer["id"] in user.get("followers", []))
+
+    return {
+        "user": {
+            "id": user["id"], "username": user["username"], "name": user["name"],
+            "bio": user.get("bio", ""), "avatar_url": user.get("avatar_url", ""),
+            "role": user.get("role"),
+        },
+        "stats": {
+            "followers": len(user.get("followers", [])),
+            "following": len(user.get("following", [])),
+            "courses": len(courses),
+            "gigs": len(gigs),
+            "posts": len(posts) + len(reels),
+        },
+        "level": compute_level(user.get("xp", 0)),
+        "badges": [b for b in BADGE_DEFS if b["key"] in user.get("badges", [])],
+        "courses": courses,
+        "gigs": gigs,
+        "reels": reels,
+        "posts": posts,
+        "is_following": is_following,
+        "is_self": bool(viewer and viewer["id"] == user["id"]),
+    }
+
+
+
 @router.post("/users/{user_id}/follow")
 async def follow_user(user_id: str, current=Depends(get_current_user)):
     if user_id == current["id"]:
