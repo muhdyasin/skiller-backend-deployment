@@ -7,19 +7,11 @@ import { Textarea } from "../components/ui/textarea";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-
-function readAsDataURL(file) {
-    return new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = reject;
-        r.readAsDataURL(file);
-    });
-}
+import { uploadFile } from "../lib/upload";
 
 export default function UploadPage() {
     const [file, setFile] = useState(null);
-    const [preview, setPreview] = useState(null);
+    const [previewObj, setPreviewObj] = useState(null);
     const [mediaType, setMediaType] = useState("image");
     const [caption, setCaption] = useState("");
     const [tags, setTags] = useState("");
@@ -27,33 +19,30 @@ export default function UploadPage() {
     const inputRef = useRef(null);
     const navigate = useNavigate();
 
-    const handleFile = async (f) => {
+    const handleFile = (f) => {
         if (!f) return;
-        if (f.size > 8 * 1024 * 1024) {
-            toast.error("File too large. Max 8MB for now.");
+        if (f.size > 50 * 1024 * 1024) {
+            toast.error("File too large. Max 50MB.");
             return;
         }
-        const isVideo = f.type.startsWith("video/");
-        setMediaType(isVideo ? "video" : "image");
-        const dataUrl = await readAsDataURL(f);
+        setMediaType(f.type.startsWith("video/") ? "video" : "image");
         setFile(f);
-        setPreview(dataUrl);
+        if (previewObj) URL.revokeObjectURL(previewObj);
+        setPreviewObj(URL.createObjectURL(f));
     };
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!preview) {
-            toast.error("Pick an image or video to share");
-            return;
-        }
+        if (!file) return toast.error("Pick a file to share");
         setLoading(true);
         try {
             const tagList = tags
                 .split(/[\s,]+/)
                 .map((t) => t.replace(/^#/, "").trim())
                 .filter(Boolean);
+            const uploaded = await uploadFile(file);
             await api.post("/posts", {
-                media: preview,
+                media: uploaded.url,
                 media_type: mediaType,
                 caption,
                 tags: tagList,
@@ -73,22 +62,31 @@ export default function UploadPage() {
                 Share something
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-                Post an image or video. Add a caption and tags to get discovered.
+                Image or video. Add a caption and tags to get discovered.
             </p>
 
             <form onSubmit={submit} className="mt-8 space-y-6">
-                {preview ? (
+                {previewObj ? (
                     <div className="relative overflow-hidden rounded-2xl border border-border">
                         {mediaType === "video" ? (
-                            <video src={preview} controls className="w-full bg-black" />
+                            <video
+                                src={previewObj}
+                                controls
+                                className="w-full bg-black"
+                            />
                         ) : (
-                            <img src={preview} alt="" className="max-h-[60vh] w-full object-cover" />
+                            <img
+                                src={previewObj}
+                                alt=""
+                                className="max-h-[60vh] w-full object-cover"
+                            />
                         )}
                         <button
                             type="button"
                             onClick={() => {
                                 setFile(null);
-                                setPreview(null);
+                                if (previewObj) URL.revokeObjectURL(previewObj);
+                                setPreviewObj(null);
                             }}
                             className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-background/80 backdrop-blur hover:bg-background"
                             data-testid="upload-clear-btn"
@@ -106,7 +104,7 @@ export default function UploadPage() {
                         <UploadCloud size={36} className="text-muted-foreground" />
                         <div className="mt-3 font-semibold">Click to upload</div>
                         <div className="text-sm text-muted-foreground">
-                            PNG, JPG, MP4 · up to 8 MB
+                            PNG, JPG, MP4 · up to 50 MB
                         </div>
                     </button>
                 )}
@@ -158,7 +156,7 @@ export default function UploadPage() {
                     </Button>
                     <Button
                         type="submit"
-                        disabled={loading || !preview}
+                        disabled={loading || !file}
                         className="rounded-full px-6"
                         data-testid="upload-submit-btn"
                     >

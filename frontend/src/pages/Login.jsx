@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { formatApiError } from "../lib/api";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function Login() {
     const { login } = useAuth();
@@ -53,7 +54,10 @@ export default function Login() {
                 </div>
             </div>
 
-            <div className="flex flex-col items-center justify-center px-6 py-12">
+            <div className="relative flex flex-col items-center justify-center px-6 py-12">
+                <div className="absolute right-6 top-6">
+                    <ThemeToggle />
+                </div>
                 <div className="w-full max-w-sm">
                     <div className="mb-8 md:hidden">
                         <Logo />

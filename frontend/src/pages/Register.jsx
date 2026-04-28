@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { formatApiError } from "../lib/api";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function Register() {
     const { register } = useAuth();
@@ -37,7 +38,10 @@ export default function Register() {
 
     return (
         <div className="grid min-h-screen grid-cols-1 md:grid-cols-2" data-testid="register-page">
-            <div className="flex flex-col items-center justify-center px-6 py-12 order-2 md:order-1">
+            <div className="relative flex flex-col items-center justify-center px-6 py-12 order-2 md:order-1">
+                <div className="absolute right-6 top-6">
+                    <ThemeToggle />
+                </div>
                 <div className="w-full max-w-sm">
                     <div className="mb-8">
                         <Logo />

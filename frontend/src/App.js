@@ -15,6 +15,10 @@ import UploadPage from "./pages/Upload";
 import Profile from "./pages/Profile";
 import Courses from "./pages/Courses";
 import Gigs from "./pages/Gigs";
+import PostDetail from "./pages/PostDetail";
+import NotificationsPage from "./pages/Notifications";
+import Dashboard from "./pages/Dashboard";
+import Leaderboard from "./pages/Leaderboard";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -56,6 +60,24 @@ function AppRoutes() {
             <Route path="/courses" element={<Shell><Courses /></Shell>} />
             <Route path="/gigs" element={<Shell><Gigs /></Shell>} />
             <Route path="/u/:username" element={<Shell><Profile /></Shell>} />
+            <Route path="/p/:postId" element={<Shell><PostDetail /></Shell>} />
+            <Route path="/leaderboard" element={<Shell><Leaderboard /></Shell>} />
+            <Route
+                path="/notifications"
+                element={
+                    <Protected>
+                        <Shell><NotificationsPage /></Shell>
+                    </Protected>
+                }
+            />
+            <Route
+                path="/dashboard"
+                element={
+                    <Protected>
+                        <Shell><Dashboard /></Shell>
+                    </Protected>
+                }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );

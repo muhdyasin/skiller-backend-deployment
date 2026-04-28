@@ -1,0 +1,44 @@
+{
+  "summary": "Iteration 2 backend + frontend review of Skiller. Backend: 19/19 new pytest cases pass (covering /upload + /files, notifications + read flows + actor!=target rule, AI Claude recommend shape, full ad lifecycle incl. impression/click increments, /dashboard/stats keys, courses owner-only CRUD + idempotent enroll, leaderboard XP-desc ordering, /users/me/xp shape, /users/{username} level+badges, XP rules for post(20)/gig_apply(15)/enroll(10) and badges first_post/earner/scholar, daily_login streak idempotency on /auth/me). Total backend regression now 17 (iter1) + 19 (iter2) = 36 tests, all green. Frontend: Login + Register public-theme-toggle present and functional (toggles html.dark). Sidebar has nav-dashboard, nav-leaderboard, xp-badge (Level 1 Newbie + 14/50 progress + 1d streak), notifications-bell with unread badge. Feed renders AI Smart Picks (data-testid='ai-recommendations') after ~5–15s real Claude call with non-empty 'why' strings. Post images link to /p/:id post-detail page (verified navigation). /dashboard renders stats grid (Posts/Likes/Comments/Followers/Courses/Enrollments/XP/Active Ads) with tabs Overview/Posts/Courses/Ads, and 'New course' + 'Run an ad' dialogs both open and contain expected fields (title, description, thumbnail upload, headline, caption, creative, CTA, budget, duration, Launch ad button). /leaderboard lists users sorted by XP desc with badge counts. /u/maya profile shows L1 Newbie + 14 XP + 1d streak + earned badges (First Post, Earner). No critical defects.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Dashboard", "issues": ["Missing data-testid on tabs (dashboard-tab-overview/posts/courses/ads) and stats-grid container. Buttons new-course-btn and new-ad-btn already have testids; for parity and easier downstream automation, add testids to the four tab triggers and the stats grid."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter2.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/iter2_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Add data-testid to Dashboard Tab triggers ('dashboard-tab-overview', 'dashboard-tab-posts', 'dashboard-tab-courses', 'dashboard-tab-ads') and stats-grid wrapper for stable automated checks.",
+    "(Optional, carry-over) AdRotator injected in feed at index 1 has no data-testid for the rendered ad slot - consider adding 'ad-slot' for impression assertions.",
+    "(Optional security, carry-over from iter1) /api/upload size cap is 50MB but PostCreate.media still accepts arbitrary string (data: URLs). Consider validating media against allowed schemes (https or /api/files/) for posts that didn't come from /api/upload."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 1088 lines; XP rules, badges, storage helpers, ads, notifications, dashboard, AI all in one file. Past 700-line threshold - split into routers (auth/posts/users/ads/courses/notifications/ai/storage) and services modules.",
+    "Storage helpers put_object/get_object are sync requests calls inside async route handlers — they will block the event loop on large uploads. Use httpx.AsyncClient or run in threadpool (anyio.to_thread.run_sync).",
+    "AI recommend endpoint does no rate-limiting or caching; each /ai/recommend call hits Claude (5–15s + cost). Cache per-user for ~1 hour at minimum.",
+    "Ad impressions counter increments for every /api/ads/active call regardless of viewer — bots/refreshes will inflate counts. Should require auth and dedupe per user/session.",
+    "/api/ads/{id}/click is unauthenticated and unguarded — any client can spam clicks/spend. Require auth and rate-limit.",
+    "CORS still allow_credentials=True with allow_origins='*' fallback (env CORS_ORIGINS). Set explicit origin list in prod.",
+    "Notifications enrich_notification does N+1 lookups for actor — batch via $lookup or in-memory join.",
+    "/users/me PATCH does not validate avatar_url scheme (could accept javascript:)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter2.py",
+    "/app/test_reports/pytest/iter2_results.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@skiller.app/Admin@123, maya@skiller.app/Demo@123, arjun@skiller.app/Demo@123, neha@skiller.app/Demo@123 — all working. Plus a TEST_<hex>@skiller.app fresh user is created per pytest run.",
+  "seed_data_creation": "pytest creates one fresh TEST_<hex> user (registers via /api/auth/register) per run for XP/badge isolation; also creates a TEST_ad ad (then deletes it), a TEST_course (then deletes it), TEST_iter2 first post on the test user (kept), and posts a TEST_iter2 comment on a maya post (kept). No cleanup of comments/notifications by design (used as fixtures for later tests).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run all backend regression with: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/all_results.xml — covers iteration 1 (17) + iteration 2 (19). For frontend, AI recommendations need 5–15s real wait (use 30s timeout on [data-testid='ai-recommendations']). Public theme toggle is on Login + Register (data-testid='public-theme-toggle'); sidebar testids: nav-dashboard, nav-leaderboard, xp-badge, notifications-bell. Post-detail links use href '/p/<id>' on post cards. Dashboard 'New course' and 'Run an ad' buttons have data-testid='new-course-btn' and 'new-ad-btn'. /api/files/{path} is public (no auth) so img/video tags can render directly with REACT_APP_BACKEND_URL + path returned by /api/upload.",
+  "rca of the issue": "No bugs to RCA. Initial false-FAIL on ai-recommendations was a test timing issue (5s wait < real Claude 5–15s response). Confirmed working with 30s wait on selector."
+}

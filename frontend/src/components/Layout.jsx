@@ -9,11 +9,15 @@ import {
     Sun,
     Moon,
     LogOut,
+    LayoutDashboard,
+    Trophy,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { Logo } from "./Logo";
 import { Button } from "./ui/button";
+import NotificationsBell from "./NotificationsBell";
+import XPBadge from "./XPBadge";
 
 const navItems = [
     { to: "/feed", label: "Home", icon: Home, tid: "nav-home" },
@@ -21,6 +25,11 @@ const navItems = [
     { to: "/upload", label: "Upload", icon: PlusSquare, tid: "nav-upload" },
     { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
     { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
+];
+
+const moreNav = [
+    { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tid: "nav-dashboard", auth: true },
+    { to: "/leaderboard", label: "Leaderboard", icon: Trophy, tid: "nav-leaderboard" },
 ];
 
 export default function Layout({ children }) {
@@ -34,53 +43,78 @@ export default function Layout({ children }) {
         <div className="min-h-screen bg-background text-foreground">
             {/* Desktop sidebar */}
             <aside
-                className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border bg-background p-6 md:flex"
+                className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col border-r border-border bg-background p-5 md:flex"
                 data-testid="sidebar"
             >
-                <div className="mb-10">
+                <div className="mb-8">
                     <Logo />
                 </div>
-                <nav className="flex flex-1 flex-col gap-1">
+                <nav className="flex flex-1 flex-col gap-0.5">
                     {navItems.map(({ to, label, icon: Icon, tid }) => (
                         <NavLink
                             key={to}
                             to={to}
                             data-testid={tid}
                             className={({ isActive }) =>
-                                `group flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium transition-colors ${
+                                `group flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
                                     isActive
                                         ? "bg-primary text-primary-foreground"
                                         : "text-foreground hover:bg-accent"
                                 }`
                             }
                         >
-                            <Icon size={20} />
+                            <Icon size={18} />
                             <span>{label}</span>
                         </NavLink>
                     ))}
+                    {moreNav
+                        .filter((it) => !it.auth || user)
+                        .map(({ to, label, icon: Icon, tid }) => (
+                            <NavLink
+                                key={to}
+                                to={to}
+                                data-testid={tid}
+                                className={({ isActive }) =>
+                                    `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? "bg-primary text-primary-foreground"
+                                            : "text-foreground hover:bg-accent"
+                                    }`
+                                }
+                            >
+                                <Icon size={18} />
+                                <span>{label}</span>
+                            </NavLink>
+                        ))}
                     <NavLink
                         to={profilePath}
                         data-testid="nav-profile"
                         className={({ isActive }) =>
-                            `flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium transition-colors ${
+                            `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium transition-colors ${
                                 isActive
                                     ? "bg-primary text-primary-foreground"
                                     : "text-foreground hover:bg-accent"
                             }`
                         }
                     >
-                        <UserIcon size={20} />
+                        <UserIcon size={18} />
                         <span>Profile</span>
                     </NavLink>
                 </nav>
 
-                <div className="mt-auto space-y-2 border-t border-border pt-4">
+                {user && (
+                    <div className="mt-3">
+                        <XPBadge user={user} />
+                    </div>
+                )}
+
+                <div className="mt-3 space-y-1 border-t border-border pt-3">
                     <button
                         onClick={toggle}
                         data-testid="theme-toggle"
-                        className="flex w-full items-center gap-3 rounded-full px-4 py-3 text-sm font-medium hover:bg-accent"
+                        className="flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium hover:bg-accent"
                     >
-                        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                        {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
                         <span>{theme === "dark" ? "Light mode" : "Dark mode"}</span>
                     </button>
                     {user ? (
@@ -90,9 +124,9 @@ export default function Layout({ children }) {
                                 navigate("/");
                             }}
                             data-testid="logout-btn"
-                            className="flex w-full items-center gap-3 rounded-full px-4 py-3 text-sm font-medium text-destructive hover:bg-accent"
+                            className="flex w-full items-center gap-3 rounded-full px-4 py-2.5 text-sm font-medium text-destructive hover:bg-accent"
                         >
-                            <LogOut size={18} />
+                            <LogOut size={16} />
                             <span>Log out</span>
                         </button>
                     ) : (
@@ -114,6 +148,8 @@ export default function Layout({ children }) {
             >
                 <Logo size="sm" />
                 <div className="flex items-center gap-1">
+                    {user && <XPBadge user={user} compact />}
+                    <NotificationsBell />
                     <button
                         data-testid="theme-toggle-mobile"
                         onClick={toggle}
@@ -144,6 +180,11 @@ export default function Layout({ children }) {
                     )}
                 </div>
             </header>
+
+            {/* Desktop top right floating actions (notifications) */}
+            <div className="fixed right-6 top-6 z-30 hidden md:block">
+                <NotificationsBell />
+            </div>
 
             {/* Main */}
             <main className="md:pl-64">

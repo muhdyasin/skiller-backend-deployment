@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { api, formatApiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { Button } from "../components/ui/button";
@@ -63,7 +63,7 @@ export default function Profile() {
     if (!data)
         return <div className="py-20 text-center text-muted-foreground">User not found.</div>;
 
-    const { user, posts, post_count, follower_count, following_count, is_following, is_self } = data;
+    const { user, posts, post_count, follower_count, following_count, is_following, is_self, level, badges } = data;
 
     return (
         <div className="mx-auto max-w-4xl px-4 py-6" data-testid="profile-page">
@@ -114,6 +114,30 @@ export default function Profile() {
                     </div>
                     <div className="mt-3 text-sm font-semibold">{user.name}</div>
                     <p className="mt-1 max-w-xl text-sm text-muted-foreground">{user.bio || "No bio yet."}</p>
+                    {level && (
+                        <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs">
+                            <span className="font-bold">L{level.level} · {level.name}</span>
+                            <span className="text-muted-foreground">{level.xp} XP</span>
+                            {user.streak > 0 && (
+                                <span className="ml-1 rounded-full bg-orange-500/10 px-2 py-0.5 font-semibold text-orange-500">
+                                    🔥 {user.streak}d streak
+                                </span>
+                            )}
+                        </div>
+                    )}
+                    {badges?.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2" data-testid="profile-badges">
+                            {badges.map((b) => (
+                                <span
+                                    key={b.key}
+                                    title={b.desc}
+                                    className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1 text-xs font-medium"
+                                >
+                                    <span>{b.icon}</span> {b.title}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </header>
 
@@ -169,17 +193,18 @@ export default function Profile() {
                 ) : (
                     <div className="grid grid-cols-3 gap-1 md:gap-3">
                         {posts.map((p) => (
-                            <div
+                            <Link
                                 key={p.id}
+                                to={`/p/${p.id}`}
                                 className="aspect-square overflow-hidden rounded-none md:rounded-xl"
                             >
                                 <img
                                     src={p.media}
                                     alt=""
-                                    className="h-full w-full object-cover"
+                                    className="h-full w-full object-cover transition-transform hover:scale-105"
                                     loading="lazy"
                                 />
-                            </div>
+                            </Link>
                         ))}
                     </div>
                 )}

@@ -1,14 +1,14 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { Heart, MessageCircle, Send, Bookmark } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import { fileSrc } from "../lib/upload";
 
 function timeAgo(iso) {
     try {
-        const d = new Date(iso);
-        const s = Math.floor((Date.now() - d.getTime()) / 1000);
+        const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
         if (s < 60) return `${s}s`;
         if (s < 3600) return `${Math.floor(s / 60)}m`;
         if (s < 86400) return `${Math.floor(s / 3600)}h`;
@@ -20,6 +20,7 @@ function timeAgo(iso) {
 
 export default function PostCard({ post, onUpdated }) {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [liked, setLiked] = useState(post.liked);
     const [likeCount, setLikeCount] = useState(post.like_count);
     const [comments, setComments] = useState(post.comments || []);
@@ -27,10 +28,7 @@ export default function PostCard({ post, onUpdated }) {
     const [showAllComments, setShowAllComments] = useState(false);
 
     const toggleLike = async () => {
-        if (!user) {
-            toast.error("Sign in to like posts");
-            return;
-        }
+        if (!user) return toast.error("Sign in to like posts");
         try {
             const { data } = await api.post(`/posts/${post.id}/like`);
             setLiked(data.liked);
@@ -64,17 +62,24 @@ export default function PostCard({ post, onUpdated }) {
             className="border-b border-border pb-6"
             data-testid={`post-${post.id}`}
         >
-            {/* Header */}
             <div className="flex items-center gap-3 py-3">
                 <Link to={`/u/${author.username}`} className="flex items-center gap-3">
                     <img
-                        src={author.avatar_url || `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(author.name || "S")}`}
+                        src={
+                            author.avatar_url ||
+                            `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(author.name || "S")}`
+                        }
                         alt={author.name}
                         className="h-10 w-10 rounded-full border border-border object-cover"
                     />
                     <div>
-                        <div className="text-sm font-semibold leading-tight">
+                        <div className="flex items-center gap-2 text-sm font-semibold leading-tight">
                             {author.username}
+                            {author.level && (
+                                <span className="rounded-full border border-border px-1.5 text-[10px] font-bold text-muted-foreground">
+                                    L{author.level.level}
+                                </span>
+                            )}
                         </div>
                         <div className="text-xs text-muted-foreground">
                             {author.name} · {timeAgo(post.created_at)}
@@ -83,25 +88,25 @@ export default function PostCard({ post, onUpdated }) {
                 </Link>
             </div>
 
-            {/* Media */}
             {post.media ? (
-                post.media_type === "video" ? (
-                    <video
-                        src={post.media}
-                        controls
-                        className="w-full rounded-2xl border border-border bg-black"
-                    />
-                ) : (
-                    <img
-                        src={post.media}
-                        alt={post.caption || "post"}
-                        className="aspect-[4/5] w-full rounded-2xl border border-border object-cover"
-                        loading="lazy"
-                    />
-                )
+                <Link to={`/p/${post.id}`}>
+                    {post.media_type === "video" ? (
+                        <video
+                            src={fileSrc(post.media)}
+                            controls
+                            className="w-full rounded-2xl border border-border bg-black"
+                        />
+                    ) : (
+                        <img
+                            src={fileSrc(post.media)}
+                            alt={post.caption || "post"}
+                            className="aspect-[4/5] w-full rounded-2xl border border-border object-cover"
+                            loading="lazy"
+                        />
+                    )}
+                </Link>
             ) : null}
 
-            {/* Actions */}
             <div className="mt-3 flex items-center gap-4 text-foreground">
                 <button
                     onClick={toggleLike}
@@ -111,12 +116,15 @@ export default function PostCard({ post, onUpdated }) {
                 >
                     <Heart
                         size={24}
-                        className={
-                            liked ? "fill-destructive text-destructive animate-pop" : ""
-                        }
+                        className={liked ? "fill-destructive text-destructive animate-pop" : ""}
                     />
                 </button>
-                <button aria-label="comment" className="active:scale-90" data-testid={`comment-btn-${post.id}`}>
+                <button
+                    onClick={() => navigate(`/p/${post.id}`)}
+                    aria-label="comment"
+                    className="active:scale-90"
+                    data-testid={`comment-btn-${post.id}`}
+                >
                     <MessageCircle size={24} />
                 </button>
                 <button aria-label="share" className="active:scale-90">
@@ -127,8 +135,10 @@ export default function PostCard({ post, onUpdated }) {
                 </button>
             </div>
 
-            {/* Meta */}
-            <div className="mt-2 text-sm font-semibold" data-testid={`like-count-${post.id}`}>
+            <div
+                className="mt-2 text-sm font-semibold"
+                data-testid={`like-count-${post.id}`}
+            >
                 {likeCount} {likeCount === 1 ? "like" : "likes"}
             </div>
             {post.caption && (
@@ -150,7 +160,6 @@ export default function PostCard({ post, onUpdated }) {
                 </div>
             )}
 
-            {/* Comments */}
             {comments.length > 2 && !showAllComments && (
                 <button
                     onClick={() => setShowAllComments(true)}
