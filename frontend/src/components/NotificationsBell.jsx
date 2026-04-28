@@ -4,6 +4,7 @@ import { Bell } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import { ensurePushSubscription } from "../lib/push";
 
 function timeAgo(iso) {
     try {
@@ -93,8 +94,9 @@ export default function NotificationsBell() {
         };
         connect();
 
-        // Initial unread count fetch
+        // Initial unread count fetch + register browser push
         fetchCount();
+        ensurePushSubscription();
 
         return () => {
             alive = false;

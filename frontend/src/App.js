@@ -21,6 +21,7 @@ import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import Search from "./pages/Search";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -66,6 +67,7 @@ function AppRoutes() {
             <Route path="/u/:username" element={<Shell><Profile /></Shell>} />
             <Route path="/p/:postId" element={<Shell><PostDetail /></Shell>} />
             <Route path="/leaderboard" element={<Shell><Leaderboard /></Shell>} />
+            <Route path="/search" element={<Shell><Search /></Shell>} />
             <Route
                 path="/notifications"
                 element={

@@ -18,6 +18,7 @@ import { Logo } from "./Logo";
 import { Button } from "./ui/button";
 import NotificationsBell from "./NotificationsBell";
 import XPBadge from "./XPBadge";
+import SearchBar from "./SearchBar";
 
 const navItems = [
     { to: "/feed", label: "Home", icon: Home, tid: "nav-home" },
@@ -143,46 +144,50 @@ export default function Layout({ children }) {
 
             {/* Mobile top bar */}
             <header
-                className="glass sticky top-0 z-30 flex items-center justify-between border-b border-border px-4 py-3 md:hidden"
+                className="glass sticky top-0 z-30 flex flex-col gap-2 border-b border-border px-4 py-3 md:hidden"
                 data-testid="mobile-topbar"
             >
-                <Logo size="sm" />
-                <div className="flex items-center gap-1">
-                    {user && <XPBadge user={user} compact />}
-                    <NotificationsBell />
-                    <button
-                        data-testid="theme-toggle-mobile"
-                        onClick={toggle}
-                        className="grid h-9 w-9 place-items-center rounded-full hover:bg-accent"
-                    >
-                        {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                    </button>
-                    {user ? (
+                <div className="flex items-center justify-between">
+                    <Logo size="sm" />
+                    <div className="flex items-center gap-1">
+                        {user && <XPBadge user={user} compact />}
+                        <NotificationsBell />
                         <button
-                            data-testid="mobile-logout-btn"
-                            onClick={() => {
-                                logout();
-                                navigate("/");
-                            }}
+                            data-testid="theme-toggle-mobile"
+                            onClick={toggle}
                             className="grid h-9 w-9 place-items-center rounded-full hover:bg-accent"
                         >
-                            <LogOut size={18} />
+                            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
                         </button>
-                    ) : (
-                        <Button
-                            size="sm"
-                            onClick={() => navigate("/login")}
-                            className="rounded-full"
-                            data-testid="mobile-login-btn"
-                        >
-                            Sign in
-                        </Button>
-                    )}
+                        {user ? (
+                            <button
+                                data-testid="mobile-logout-btn"
+                                onClick={() => {
+                                    logout();
+                                    navigate("/");
+                                }}
+                                className="grid h-9 w-9 place-items-center rounded-full hover:bg-accent"
+                            >
+                                <LogOut size={18} />
+                            </button>
+                        ) : (
+                            <Button
+                                size="sm"
+                                onClick={() => navigate("/login")}
+                                className="rounded-full"
+                                data-testid="mobile-login-btn"
+                            >
+                                Sign in
+                            </Button>
+                        )}
+                    </div>
                 </div>
+                <SearchBar compact />
             </header>
 
-            {/* Desktop top right floating actions (notifications) */}
-            <div className="fixed right-6 top-6 z-30 hidden md:block">
+            {/* Desktop top right floating actions */}
+            <div className="fixed right-6 top-4 z-30 hidden items-center gap-3 md:flex">
+                <SearchBar />
                 <NotificationsBell />
             </div>
 
