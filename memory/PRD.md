@@ -38,12 +38,24 @@ India's learn-to-earn social network. Two distinct experiences in one app: Stude
 - 122/122 backend pytest passing
 - 15/16 frontend e2e initially → fixed creator login redirect → 16/16
 
+### v6 (this round — Feb 2026) — Storefront + Search Scale + Hygiene
+- **Per-creator public storefront** at `/c/<username>` (SEO-friendly) — backed by new `GET /api/c/<username>` returning user, stats, level, badges, courses (with enrollment counts), gigs, reels, posts. Hero, follow/share buttons, tabbed catalogue (Courses / Gigs / Reels / Posts), and "Discover more creators" CTA. Open to anonymous visitors.
+- Profile page `/u/<username>` now exposes a "View storefront →" link for creators.
+- **Mongo text search indexes** (`users_text_idx`, `posts_text_idx`, `courses_text_idx`, `gigs_text_idx`) with hybrid `$text` → regex fallback for partial typeahead queries (in `routers/search.py`).
+- **TTL index** on `password_reset_tokens.expires_at_dt` (`expireAfterSeconds=0`) — Mongo auto-deletes expired reset tokens. `forgot_password` now writes both string and datetime fields for compat.
+- Compound indexes added: `posts(user_id, created_at)`, `courses(owner_id, created_at)`, `gigs(owner_id, created_at)`, `enrollments(course_id)`, `applications(gig_id)`.
+- **SearchBar testid disambiguated** — `search-input` removed; `search-input-mobile` + `search-input-desktop` (and matching clear-btn variants) — based on `compact` prop.
+
+## Testing
+- 141/141 backend pytest passing (19 new iter6 tests + 122 prior)
+- Frontend storefront flow + tab navigation + search-id uniqueness verified at 1920×1080 and 390×844 viewports.
+
 ## Backlog
-- P1: `RESEND_API_KEY` to enable real email delivery
-- P1: Two `search-input` elements (mobile + desktop) share testid — disambiguate
-- P1: Mongo TTL index on `password_reset_tokens.expires_at`; gate dev console PASSWORD_RESET_LINK behind APP_ENV
-- P1: Mongo text indexes for /api/search to scale beyond seed
+- P1: `RESEND_API_KEY` to enable real password-reset email delivery (currently logs link to backend log)
+- P1: Migrate auth tokens from `localStorage` → `httpOnly` Secure cookies (XSS protection). Auth playbook trip required first.
+- P1: Gate `PASSWORD_RESET_LINK` info-log behind `APP_ENV != production` (carry-over from iter4)
+- P1: Parallelize `/api/search` collection lookups with `asyncio.gather` to halve p95 latency
 - P2: Stripe / Razorpay course checkout (revenue!)
 - P2: DM messaging
 - P2: Email verification on signup
-- P2: Per-creator pages (gig listings, course catalogue) and SEO friendly URLs
+- P2: OG/Twitter meta tags on `/c/<username>` for actual link unfurls (server-rendered or react-helmet)
