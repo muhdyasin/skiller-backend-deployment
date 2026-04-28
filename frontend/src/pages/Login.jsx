@@ -22,7 +22,8 @@ export default function Login() {
         try {
             const user = await login(email, password);
             toast.success("Welcome back!");
-            navigate(user?.role === "creator" || user?.role === "admin" ? "/feed" : "/home");
+            const isCreator = user?.role === "creator" || user?.role === "admin";
+            navigate(isCreator ? "/dashboard" : "/home");
         } catch (err) {
             toast.error(formatApiError(err.response?.data?.detail) || "Login failed");
         } finally {

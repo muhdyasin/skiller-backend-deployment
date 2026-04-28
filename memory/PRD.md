@@ -4,45 +4,46 @@
 > https://gamma.app/docs/excue4og8dptp7u — Instagram-like learn-to-earn app called Skiller, with upload section, day/night theme, modern minimalist palette.
 
 ## Vision
-India's Instagram-style learn-to-earn social network. Creators post skill content, run paid courses, run ads; learners discover, follow, level up via XP/badges, and apply for freelance gigs.
+India's learn-to-earn social network. Two distinct experiences in one app: Students discover skills (YouTube-like) + watch reels + take courses + apply for gigs; Creators/Institutions teach + run courses + post gigs + run a CRM + run ads + see insights.
 
-## Implemented (cumulative, Iter 1 → 4 — Feb 2026)
+## Implemented (cumulative through Iteration 5 — Feb 2026)
 
-### v1 — Core social MVP
-- JWT auth, feed, upload (base64), profiles, follow, like, comment
-- Courses + Gigs (browse + apply), day/night theme, sidebar/bottom-nav
+### v1 — Core social MVP (JWT, feed, posts, follow, like, comment, courses, gigs)
+### v2 — Object storage, post-detail, in-app notifications, AI recs, dashboard, ads, gamification
+### v3 — Realtime WebSocket notifications, password reset, media URL allowlist
+### v4 — Resend email integration, web push (VAPID), search, Indian-red brand, full backend refactor
+### v5 (this round) — Role split + YouTube-style student experience
+- **Sign-up role choice** — Student vs Creator/Institution selector with per-role copy
+- **Role-aware navigation** — sidebar dynamically renders Student or Creator nav; mobile bottom-bar matches
+- **Student experience** (YouTube-like):
+  - `/home` — category-chip filtered grid of video/image cards
+  - `/reels` — vertical-scroll reels feed with autoplay, mute toggle, like + comment overlay
+  - `/learning` — enrolled courses + applications + XP/streak/badges hub
+  - Creator-only routes (`/dashboard`, `/insights`, `/crm`) guarded with redirect → `/home`
+- **Creator/Institution experience**:
+  - `/dashboard` — stats grid + Posts/Courses/Ads tabs (existing)
+  - `/insights` — 30-day mini-charts (posts/likes/comments) + Top 3 posts + Top 3 courses + ads CTR/spend
+  - `/crm` — gigs + applicants table with Shortlist/Hire/Reject actions; courses + enrollments table; mailto links
+  - Creators can post their own gigs (`POST /api/gigs` + new gig dialog from CRM)
+- **Backend role plumbing** — `RegisterIn.role`, `require_creator` dependency, applications now carry `status` (pending/shortlisted/hired/rejected) with notifications on transition
+- **Migrations** — legacy `role:"user"` → `student`; demo accounts → `creator`; reel-style video posts seeded; gig owner_id backfilled
 
-### v2 — Polish + monetisation hooks
-- Public theme toggle on Login/Register
-- Object storage (Emergent storage API): POST /api/upload + GET /api/files/{path}
-- Post-detail page (/p/:id), in-app notifications (bell + page)
-- AI recommendations (Claude Sonnet 4.5)
-- Creator/Institution Dashboard with Posts/Courses/Ads CRUD
-- Gamification: XP, 9 levels, 10 badges, daily streaks, leaderboard
-
-### v3 — Realtime + security
-- Real-time WebSocket notifications (replaces 25s polling)
-- Tighter media URL allowlist on POST /api/posts (https/http or /api/files/)
-- Dashboard data-testids
-- Password reset flow (forgot-password + reset-password) — dev-mode console log
-
-### v4 — Email, Push, Search, Refactor, Brand
-- **Email** — `/api/auth/forgot-password` wired to Resend with HTML template (falls back to console log if `RESEND_API_KEY` empty)
-- **Web Push notifications** — Service Worker (`/sw.js`) + auto-generated VAPID keys (persisted in MongoDB); `ensurePushSubscription()` gracefully no-ops when permission denied
-- **Backend refactor** — `server.py` split into `core.py`, `notifications_service.py`, `seed.py`, and `routers/` (auth, users, posts, courses, gigs, ads, dashboard, ai, notifications, files, ws, search, push)
-- **Search bar** — `/api/search?q=` returns users + posts + courses + gigs; debounced dropdown in top header on every page; dedicated `/search` page
-- **Brand color** — primary changed from blue to **Indian red** (`#B91C1C` light / `#DC2626` dark)
+## Demo accounts
+- Admin: `admin@skiller.app / Admin@123` (admin)
+- Creators: `maya@skiller.app`, `arjun@skiller.app`, `neha@skiller.app` — all `Demo@123`
+- New users default to **student** unless they pick "Creator/Institution" at signup
+- "Become a creator" button on student profile for one-click upgrade
 
 ## Testing
-- 80/80 backend pytest passing across all four iterations
-- 100% frontend e2e passing
-- Manual WebSocket test (`/tmp/ws_test.py`) confirms realtime notifications
+- 122/122 backend pytest passing
+- 15/16 frontend e2e initially → fixed creator login redirect → 16/16
 
 ## Backlog
-- P1: Set `RESEND_API_KEY` (user to provide) so password-reset emails actually deliver
-- P1: Add Mongo text indexes for /api/search to scale beyond seed-sized data
-- P1: TTL index on `password_reset_tokens.expires_at`
+- P1: `RESEND_API_KEY` to enable real email delivery
+- P1: Two `search-input` elements (mobile + desktop) share testid — disambiguate
+- P1: Mongo TTL index on `password_reset_tokens.expires_at`; gate dev console PASSWORD_RESET_LINK behind APP_ENV
+- P1: Mongo text indexes for /api/search to scale beyond seed
 - P2: Stripe / Razorpay course checkout (revenue!)
-- P2: Stories / reels
 - P2: DM messaging
 - P2: Email verification on signup
+- P2: Per-creator pages (gig listings, course catalogue) and SEO friendly URLs
