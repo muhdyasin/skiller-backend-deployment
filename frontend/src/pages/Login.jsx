@@ -107,6 +107,16 @@ export default function Login() {
                         </Button>
                     </form>
 
+                    <div className="mt-3 text-center text-sm">
+                        <Link
+                            to="/forgot-password"
+                            className="text-muted-foreground hover:text-primary hover:underline"
+                            data-testid="forgot-password-link"
+                        >
+                            Forgot password?
+                        </Link>
+                    </div>
+
                     <div className="mt-6 rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">
                         <div className="mb-1 font-semibold text-foreground">Try a demo account</div>
                         Email: <span className="font-mono">maya@skiller.app</span>

@@ -14,9 +14,7 @@ API = f"{BASE}/api"
 DEMO = {"email": "maya@skiller.app", "password": "Demo@123"}
 ARJUN = {"email": "arjun@skiller.app", "password": "Demo@123"}
 
-PNG_DATA_URL = "data:image/png;base64," + base64.b64encode(
-    bytes.fromhex("89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C4890000000A49444154789C6300010000000500010D0A2DB40000000049454E44AE426082")
-).decode()
+PNG_URL = "https://images.unsplash.com/photo-test.png"
 
 
 @pytest.fixture(scope="session")
@@ -94,7 +92,7 @@ class TestPosts:
     def test_create_like_comment(self, maya_token, arjun_token):
         # create
         r = requests.post(f"{API}/posts", headers=hdr(maya_token),
-                          json={"caption": "TEST_post", "media": PNG_DATA_URL,
+                          json={"caption": "TEST_post", "media": PNG_URL,
                                 "media_type": "image", "tags": ["test"]}, timeout=15)
         assert r.status_code == 200, r.text
         post = r.json()
@@ -124,7 +122,7 @@ class TestPosts:
         requests.delete(f"{API}/posts/{pid}", headers=hdr(maya_token), timeout=15)
 
     def test_create_no_auth(self):
-        r = requests.post(f"{API}/posts", json={"media": PNG_DATA_URL}, timeout=15)
+        r = requests.post(f"{API}/posts", json={"media": PNG_URL}, timeout=15)
         assert r.status_code == 401
 
 

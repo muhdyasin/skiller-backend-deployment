@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 3 review of Skiller. Backend: 16 new pytest cases (test_iter3.py) all pass. Covers WebSocket /api/ws auth (invalid token rejected, valid token receives {type:'connected', user_id} on accept), real-time notification delivery (Arjun's WS receives {type:'notification', data:{...}} when Maya follows him), POST /api/posts media URL allowlist (data:/javascript:/empty/ftp:/file:/blob: rejected with 422; https/http/api-files accepted with 200), forgot-password no-enumeration (200 for unknown email), forgot-password logs PASSWORD_RESET_LINK to backend logs for known email (extracted via tail -n 500 /var/log/supervisor/backend.err.log), reset-password invalid token=>400, full happy path (forgot->extract token->reset->old password fails->new password works->token replay returns 400), and Neha password restored to Demo@123. Total backend regression: 17 (iter1) + 19 (iter2) + 16 (iter3) = 52, all green. Note: had to update iter1 backend_test.py PNG_DATA_URL to https URL since iter3 added media validation that now correctly rejects data: URLs. Frontend: /forgot-password renders with public ThemeToggle, email input, submit btn; submitting shows confirmation. /reset-password/:token renders password+confirm; mismatch shows toast. Login page has data-testid='forgot-password-link' navigating to /forgot-password. Dashboard tabs (data-testid='dashboard-tab-overview/posts/courses/ads') and dashboard-stats-grid all present and visible. Feed AdRotator: no active ad in DB at test time so ad-slot count=0 (component renders only when active ad exists - acceptable per requirement 'only when an active ad exists'). NotificationsBell opens wss://.../api/ws?token=<jwt> on mount (verified via page.on('websocket')). Backend pytest already proves WS notification delivery works end-to-end.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "WS /api/ws", "issue": "Server closes invalid-token WebSocket before calling accept(), so client sees HTTP 403 (handshake rejected) rather than the intended close code 4401. Functionally correct (invalid tokens cannot connect) but spec said 'closes with 4401'. To deliver 4401 to the client, do await websocket.accept() then await websocket.close(code=4401) when token is invalid."}
+  ]},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "WebSocket reconnect on mount", "issue": "Browser console shows repeated 'WebSocket is closed before the connection is established.' warnings on every page load/reload while logged in. Most likely React StrictMode double-effect (effect runs -> cleanup closes WS before open handshake completes -> effect re-runs and opens a new WS). Functionally a real connection is eventually established (verified via page.on('websocket') and backend logs), but the noise in DevTools is bad UX and doubles connect load. Fix: ensure NotificationsBell useEffect dedupes/serialises connects (e.g., a ref guarding double-invoke, or only connect when ws.readyState === CLOSED).", "affected_selectors": ["[data-testid='notifications-bell']"]}
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/backend/tests/test_iter2.py",
+    "/app/backend/tests/test_iter3.py",
+    "/app/test_reports/pytest/all_iter3_results.xml"
+  ],
+  "action_items": [
+    "(Optional, polish) On /api/ws invalid token, accept() then close(code=4401) so clients receive 4401 instead of HTTP 403 handshake rejection.",
+    "(Recommended) NotificationsBell.jsx: guard against React StrictMode double-mount causing 'WebSocket is closed before the connection is established.' warnings on every page load. Track ws.readyState in a ref and skip new connect if previous still CONNECTING.",
+    "(Carry-over) AdRotator's active-ad render path was not exercised in this run because no active ad existed at test time. Recommend a dev-seed of one always-active TEST ad gated behind an env flag for E2E reliability.",
+    "(Carry-over from iter2) server.py is now 1218 lines; split into routers/services. forgot/reset password + WS would naturally live in /auth and /ws routers."
+  ],
+  "critical_code_review_comments": [
+    "server.py grew to 1218 lines (was 1088) — past 700 threshold; split into routers (auth, posts, users, ads, courses, notifications, ws, ai, storage).",
+    "/api/ws invalid-token path closes before accept(), so close code 4401 is never sent to client (proxy returns HTTP 403). For spec-compliance accept() then close(4401).",
+    "password_reset_tokens has unique index on token but no index on user_id; a user requesting forgot-password 1000x will accumulate tokens — add TTL index on expires_at (Mongo TTL) and/or invalidate previous unused tokens for the same user on new request.",
+    "reset_password does not enforce expires_at via DB query — relies on isoformat compare in Python. A TTL index on expires_at would auto-purge expired tokens.",
+    "WSManager uses a non-async lock (self.lock) inside async methods — fine for short critical sections, but if you ever broadcast to many users hold the lock briefly. Currently send_to iterates a copied set which is safe.",
+    "PASSWORD_RESET_LINK is logged at INFO level into backend.err.log — fine for dev, but in production this leaks the reset token to anyone with log access. Gate behind APP_ENV != 'production' or send via email provider only.",
+    "Forgot-password endpoint is unauthenticated and not rate-limited — vulnerable to email enumeration via timing (existing emails do extra work: insert + log) and to mass token generation. Add per-IP and per-email rate limit (e.g., 3/hour).",
+    "NotificationsBell WebSocket has no exponential backoff on reconnect — risk of tight loop if backend is down. Already partially mitigated by 25s ping but reconnect cadence should be 1s -> 2s -> 4s -> 8s -> 30s capped.",
+    "Frontend axios api client likely sends Authorization header but no withCredentials — confirm backend uses Bearer tokens (it does) so cookies aren't required."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter3.py",
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/all_iter3_results.xml",
+    "/app/test_reports/pytest/iter3_results.xml",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {"backend": "100% (52/52)", "frontend": "100% on testable surfaces (ad-slot un-exercisable due to no active ad seeded)"},
+  "test_credentials": "admin@skiller.app/Admin@123, maya@skiller.app/Demo@123, arjun@skiller.app/Demo@123, neha@skiller.app/Demo@123 — all RESTORED to working state at end of test run (Neha was reset twice and explicitly restored to Demo@123 in test_reset_valid_token_then_replay_blocked_then_restore).",
+  "seed_data_creation": "test_iter3 creates one short-lived TEST_iter3 post per accepted-media param (deleted in same test). Generates 3 password_reset_tokens for neha@skiller.app per run (1 unknown, 2 known) — left in DB with used=true (no leak risk).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run: pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/all.xml -> expect 52 passing. WebSocket test relies on websockets pip pkg (already installed v16.0). PASSWORD_RESET_LINK is logged in /var/log/supervisor/backend.err.log — tail_log_for_token() helper extracts it. If you change Neha's password during testing, restore via the same forgot+reset pattern. Frontend ad-slot only renders when GET /api/ads/active returns a doc; seed one active ad first if you need to assert the slot. Console will show benign 'WebSocket is closed before the connection is established.' warnings due to React StrictMode double-effect — not a regression.",
+  "rca of the issue": "No production bugs. Two minor follow-ups: (a) WS invalid-token close emits HTTP 403 instead of code 4401 because server.close() is called before .accept() — Starlette can only send a custom close code after handshake completion. (b) NotificationsBell WS warnings on every load are caused by StrictMode firing useEffect twice in dev — first instance is closed before its handshake completes; second instance succeeds. Both are cosmetic."
+}

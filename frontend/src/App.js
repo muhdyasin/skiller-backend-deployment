@@ -19,6 +19,8 @@ import PostDetail from "./pages/PostDetail";
 import NotificationsPage from "./pages/Notifications";
 import Dashboard from "./pages/Dashboard";
 import Leaderboard from "./pages/Leaderboard";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -47,6 +49,8 @@ function AppRoutes() {
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:token" element={<ResetPassword />} />
             <Route path="/feed" element={<Shell><Feed /></Shell>} />
             <Route path="/explore" element={<Shell><Explore /></Shell>} />
             <Route

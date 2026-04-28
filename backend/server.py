@@ -6,18 +6,20 @@ load_dotenv(ROOT_DIR / '.env')
 import os
 import uuid
 import json
+import secrets
 import logging
 import bcrypt
 import jwt
 import requests
+import asyncio
 from datetime import datetime, timezone, timedelta, date
-from typing import List, Optional
+from typing import List, Optional, Set, Dict
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Header, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, UploadFile, File, Header, Query, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import Response as StarletteResponse
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 
 # ---------- DB ----------
 mongo_url = os.environ['MONGO_URL']
@@ -210,10 +212,39 @@ async def check_badges(user_id: str):
 
 
 # ---------- Notifications ----------
+class WSManager:
+    def __init__(self):
+        self.connections: Dict[str, Set[WebSocket]] = {}
+        self.lock = asyncio.Lock()
+
+    async def connect(self, user_id: str, ws: WebSocket):
+        await ws.accept()
+        async with self.lock:
+            self.connections.setdefault(user_id, set()).add(ws)
+
+    async def disconnect(self, user_id: str, ws: WebSocket):
+        async with self.lock:
+            if user_id in self.connections:
+                self.connections[user_id].discard(ws)
+                if not self.connections[user_id]:
+                    self.connections.pop(user_id, None)
+
+    async def send_to(self, user_id: str, payload: dict):
+        sockets = list(self.connections.get(user_id, set()))
+        for ws in sockets:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                await self.disconnect(user_id, ws)
+
+
+ws_manager = WSManager()
+
+
 async def create_notification(user_id: str, kind: str, message: str, actor_id: Optional[str] = None, meta: Optional[dict] = None):
     if actor_id == user_id:
         return
-    await db.notifications.insert_one({
+    notif = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
         "actor_id": actor_id,
@@ -222,7 +253,17 @@ async def create_notification(user_id: str, kind: str, message: str, actor_id: O
         "meta": meta or {},
         "read": False,
         "created_at": now_iso(),
-    })
+    }
+    await db.notifications.insert_one(notif.copy())
+    # broadcast over websocket if connected
+    actor = None
+    if actor_id:
+        actor = await db.users.find_one({"id": actor_id}, {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1})
+    payload = {**notif, "actor": actor}
+    try:
+        await ws_manager.send_to(user_id, {"type": "notification", "data": payload})
+    except Exception as e:
+        logger.warning(f"WS send failed: {e}")
 
 
 async def enrich_notification(n: dict) -> dict:
@@ -302,9 +343,19 @@ class LoginIn(BaseModel):
 
 class PostCreate(BaseModel):
     caption: str = ""
-    media: str  # URL (data: or http)
+    media: str  # URL: https://, /api/files/, or http://
     media_type: str = "image"
     tags: List[str] = []
+
+    @field_validator("media")
+    @classmethod
+    def _validate_media(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("media is required")
+        if v.startswith("/api/files/") or v.startswith("https://") or v.startswith("http://"):
+            return v
+        raise ValueError("media must be an https URL or a /api/files/ path")
 
 
 class CommentCreate(BaseModel):
@@ -412,6 +463,83 @@ async def login(data: LoginIn):
 async def me(current=Depends(get_current_user)):
     await update_streak_on_login(current["id"])
     return await get_user_by_id(current["id"])
+
+
+# ---------- PASSWORD RESET ----------
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str = Field(min_length=6)
+
+
+@api.post("/auth/forgot-password")
+async def forgot_password(data: ForgotPasswordIn):
+    email = data.email.lower().strip()
+    user = await db.users.find_one({"email": email})
+    # Always respond 200 to avoid leaking which emails exist
+    if user:
+        token = secrets.token_urlsafe(32)
+        await db.password_reset_tokens.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "token": token,
+            "used": False,
+            "expires_at": (now() + timedelta(hours=1)).isoformat(),
+            "created_at": now_iso(),
+        })
+        frontend = os.environ.get("FRONTEND_URL", "")
+        link = f"{frontend.rstrip('/')}/reset-password/{token}" if frontend else f"/reset-password/{token}"
+        # Dev mode: log the link to backend console. Wire to email provider in production.
+        logger.info(f"PASSWORD_RESET_LINK for {email}: {link}")
+    return {"ok": True, "message": "If that email exists, a reset link has been sent."}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(data: ResetPasswordIn):
+    rec = await db.password_reset_tokens.find_one({"token": data.token, "used": False})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    try:
+        if datetime.fromisoformat(rec["expires_at"]) < now():
+            raise HTTPException(status_code=400, detail="Token expired")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid token")
+    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(data.new_password)}})
+    await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True}})
+    return {"ok": True}
+
+
+# ---------- WEBSOCKET ----------
+@app.websocket("/api/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+        user_id = payload["sub"]
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            await websocket.close(code=4401)
+            return
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
+    await ws_manager.connect(user_id, websocket)
+    try:
+        await websocket.send_json({"type": "connected", "user_id": user_id})
+        while True:
+            # Keepalive — read & ignore client pings
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning(f"WS error: {e}")
+    finally:
+        await ws_manager.disconnect(user_id, websocket)
 
 
 # ---------- USERS ----------
@@ -975,6 +1103,8 @@ async def seed():
     await db.users.create_index("xp")
     await db.posts.create_index([("created_at", -1)])
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.password_reset_tokens.create_index("expires_at")
     await db.files.create_index("storage_path")
     await db.ad_campaigns.create_index([("status", 1), ("created_at", -1)])
 

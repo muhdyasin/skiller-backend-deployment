@@ -1,13 +1,13 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
+import { toast } from "sonner";
 
 function timeAgo(iso) {
     try {
-        const d = new Date(iso);
-        const s = Math.floor((Date.now() - d.getTime()) / 1000);
+        const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
         if (s < 60) return `${s}s`;
         if (s < 3600) return `${Math.floor(s / 60)}m`;
         if (s < 86400) return `${Math.floor(s / 3600)}h`;
@@ -23,28 +23,78 @@ export default function NotificationsBell() {
     const [items, setItems] = useState([]);
     const [count, setCount] = useState(0);
     const ref = useRef(null);
+    const wsRef = useRef(null);
     const navigate = useNavigate();
 
-    const fetchCount = async () => {
+    const fetchCount = useCallback(async () => {
         if (!user) return;
         try {
             const { data } = await api.get("/notifications/unread-count");
             setCount(data.count || 0);
         } catch {}
-    };
+    }, [user]);
 
-    const fetchItems = async () => {
+    const fetchItems = useCallback(async () => {
         try {
             const { data } = await api.get("/notifications");
             setItems(data);
         } catch {}
-    };
+    }, []);
 
+    // WebSocket for realtime
     useEffect(() => {
+        if (!user) return;
+        const token = localStorage.getItem("skiller_token");
+        if (!token) return;
+
+        const base = process.env.REACT_APP_BACKEND_URL || "";
+        const wsUrl = base.replace(/^http/i, "ws") + `/api/ws?token=${encodeURIComponent(token)}`;
+
+        let alive = true;
+        let reconnectTimer = null;
+        let pingTimer = null;
+
+        const connect = () => {
+            if (!alive) return;
+            const ws = new WebSocket(wsUrl);
+            wsRef.current = ws;
+            ws.onopen = () => {
+                pingTimer = setInterval(() => {
+                    if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+                }, 25000);
+            };
+            ws.onmessage = (e) => {
+                try {
+                    const msg = JSON.parse(e.data);
+                    if (msg.type === "notification" && msg.data) {
+                        setItems((prev) => [msg.data, ...prev].slice(0, 50));
+                        setCount((c) => c + 1);
+                        toast(msg.data.message, {
+                            description: msg.data.kind,
+                        });
+                    }
+                } catch {}
+            };
+            ws.onclose = () => {
+                clearInterval(pingTimer);
+                if (alive) reconnectTimer = setTimeout(connect, 4000);
+            };
+            ws.onerror = () => {
+                try { ws.close(); } catch {}
+            };
+        };
+        connect();
+
+        // Initial unread count fetch
         fetchCount();
-        const t = setInterval(fetchCount, 25000);
-        return () => clearInterval(t);
-    }, [user?.id]); // eslint-disable-line
+
+        return () => {
+            alive = false;
+            clearInterval(pingTimer);
+            clearTimeout(reconnectTimer);
+            try { wsRef.current?.close(); } catch {}
+        };
+    }, [user?.id, fetchCount]); // eslint-disable-line
 
     useEffect(() => {
         const onClick = (e) => {

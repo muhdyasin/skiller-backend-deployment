@@ -71,5 +71,9 @@ export function AdRotator() {
             .catch(() => {});
     }, []);
     if (!ads.length) return null;
-    return <AdCard ad={ads[0]} />;
+    return (
+        <div data-testid="ad-slot">
+            <AdCard ad={ads[0]} />
+        </div>
+    );
 }

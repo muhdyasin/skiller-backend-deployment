@@ -152,7 +152,7 @@ export default function Dashboard() {
             </div>
 
             {stats && (
-                <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4" data-testid="dashboard-stats-grid">
                     <Stat label="Posts" value={stats.posts} icon={BarChart3} />
                     <Stat label="Likes" value={stats.likes} icon={Heart} />
                     <Stat label="Comments" value={stats.comments} icon={MessageCircle} />
@@ -169,16 +169,16 @@ export default function Dashboard() {
                     className="w-full justify-start overflow-x-auto rounded-full bg-secondary p-1"
                     data-testid="dashboard-tabs"
                 >
-                    <TabsTrigger value="overview" className="rounded-full">
+                    <TabsTrigger value="overview" className="rounded-full" data-testid="dashboard-tab-overview">
                         Overview
                     </TabsTrigger>
-                    <TabsTrigger value="posts" className="rounded-full">
+                    <TabsTrigger value="posts" className="rounded-full" data-testid="dashboard-tab-posts">
                         Posts
                     </TabsTrigger>
-                    <TabsTrigger value="courses" className="rounded-full">
+                    <TabsTrigger value="courses" className="rounded-full" data-testid="dashboard-tab-courses">
                         Courses
                     </TabsTrigger>
-                    <TabsTrigger value="ads" className="rounded-full">
+                    <TabsTrigger value="ads" className="rounded-full" data-testid="dashboard-tab-ads">
                         Ads
                     </TabsTrigger>
                 </TabsList>
