@@ -106,7 +106,10 @@ export default function CreatorStorefront() {
     };
 
     const share = async () => {
-        const url = window.location.href;
+        // Share the SSR wrapper URL so WhatsApp/Slack/LinkedIn unfurl with
+        // proper OG tags. It redirects users to the real /c/<username> page.
+        const base = process.env.REACT_APP_BACKEND_URL || window.location.origin;
+        const url = `${base}/api/share/c/${data.user.username}`;
         try {
             if (navigator.share) {
                 await navigator.share({
@@ -116,7 +119,7 @@ export default function CreatorStorefront() {
                 });
             } else {
                 await navigator.clipboard.writeText(url);
-                toast.success("Link copied to clipboard");
+                toast.success("Shareable link copied");
             }
         } catch {
             // user cancelled — ignore

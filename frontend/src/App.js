@@ -33,6 +33,7 @@ import Wallet from "./pages/Wallet";
 import Billing from "./pages/Billing";
 import Community from "./pages/Community";
 import GroupChat from "./pages/GroupChat";
+import VerifyEmail from "./pages/VerifyEmail";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -92,6 +93,7 @@ function AppRoutes() {
             <Route path="/register" element={<Register />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password/:token" element={<ResetPassword />} />
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
             {/* Role-aware home */}
             <Route path="/home" element={<HomeRoute />} />

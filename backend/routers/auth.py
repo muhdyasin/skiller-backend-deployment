@@ -1,4 +1,4 @@
-"""Auth, password reset."""
+"""Auth, password reset, email verification."""
 import os
 import uuid
 import logging
@@ -6,6 +6,7 @@ import secrets
 from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel, EmailStr
 
 from core import (
     db, now, now_iso, hash_password, verify_password, create_access_token,
@@ -13,10 +14,14 @@ from core import (
     RegisterIn, LoginIn, ForgotPasswordIn, ResetPasswordIn,
     generate_referral_code, ensure_token_wallet, trial_premium_until,
 )
-from notifications_service import send_email, password_reset_html
+from notifications_service import send_email, password_reset_html, email_verification_html
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger("skiller")
+
+
+class VerifyEmailIn(BaseModel):
+    token: str
 
 
 async def update_streak_on_login(user_id: str):
@@ -74,6 +79,7 @@ async def register(data: RegisterIn):
         "referred_by": referred_by,
         "premium_until": trial_premium_until().isoformat(),
         "plan": "trial",
+        "email_verified": False,
     }
     await db.users.insert_one(doc)
     await ensure_token_wallet(user_id)
@@ -86,8 +92,88 @@ async def register(data: RegisterIn):
             "created_at": now_iso(),
         })
     await update_streak_on_login(user_id)
+    # fire-and-forget verification email
+    try:
+        await _issue_verification_token(user_id, email, data.name.strip())
+    except Exception as e:
+        logger.warning(f"Verify email dispatch failed: {e}")
     token = create_access_token(user_id, email)
     return {"token": token, "user": await get_user_by_id(user_id)}
+
+
+async def _issue_verification_token(user_id: str, email: str, name: str):
+    token = secrets.token_urlsafe(32)
+    expires_dt = now() + timedelta(days=7)
+    await db.email_verification_tokens.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "email": email,
+        "token": token,
+        "used": False,
+        "expires_at_dt": expires_dt,  # TTL-indexed
+        "created_at": now_iso(),
+    })
+    link = f"{FRONTEND_URL.rstrip('/')}/verify-email/{token}" if FRONTEND_URL else f"/verify-email/{token}"
+    if APP_ENV != "production":
+        logger.info(f"EMAIL_VERIFICATION_LINK for {email}: {link}")
+    await send_email(
+        to_email=email,
+        subject="Verify your Skiller email",
+        html=email_verification_html(name or "there", link),
+    )
+
+
+@router.post("/resend-verification")
+async def resend_verification(current=Depends(get_current_user)):
+    if current.get("email_verified"):
+        return {"ok": True, "already_verified": True}
+    # rate-limit: one email per 60s
+    recent = await db.email_verification_tokens.find_one(
+        {"user_id": current["id"], "used": False},
+        sort=[("created_at", -1)],
+    )
+    if recent:
+        try:
+            ca = datetime.fromisoformat(recent["created_at"])
+            if (now() - ca).total_seconds() < 60:
+                raise HTTPException(status_code=429, detail="Please wait a minute before requesting another email")
+        except (ValueError, TypeError):
+            pass
+    try:
+        await _issue_verification_token(current["id"], current["email"], current.get("name", ""))
+    except Exception as e:
+        logger.warning(f"resend failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not send verification email")
+    return {"ok": True}
+
+
+@router.post("/verify-email")
+async def verify_email(data: VerifyEmailIn):
+    rec = await db.email_verification_tokens.find_one({"token": data.token, "used": False})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Invalid or expired link")
+    try:
+        exp = rec["expires_at_dt"]
+        if exp.tzinfo is None:
+            from datetime import timezone as _tz
+            exp = exp.replace(tzinfo=_tz.utc)
+        if exp < now():
+            raise HTTPException(status_code=400, detail="Verification link expired")
+    except (KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid link")
+    await db.users.update_one(
+        {"id": rec["user_id"]},
+        {"$set": {"email_verified": True, "email_verified_at": now_iso()}},
+    )
+    await db.email_verification_tokens.update_one(
+        {"token": data.token}, {"$set": {"used": True}},
+    )
+    # +25 XP reward for verifying
+    try:
+        await award_xp(rec["user_id"], "email_verified", amount=25)
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 @router.post("/login")

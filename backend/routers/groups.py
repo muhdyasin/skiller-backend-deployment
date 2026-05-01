@@ -27,9 +27,10 @@ class GroupUpdate(BaseModel):
 
 
 class MessageCreate(BaseModel):
-    type: Literal["text", "image", "share"] = "text"
+    type: Literal["text", "image", "voice", "share"] = "text"
     text: str = ""
-    media: str = ""  # for type=image
+    media: str = ""  # for type=image | voice
+    duration_ms: int = 0  # for type=voice
     share: Optional[dict] = None  # {"kind": "post"|"course"|"gig"|"creator", "id": "..."}
 
     @field_validator("text")
@@ -185,6 +186,8 @@ async def send_message(group_id: str, data: MessageCreate, current=Depends(get_c
         raise HTTPException(status_code=400, detail="text required")
     if data.type == "image" and not data.media:
         raise HTTPException(status_code=400, detail="media required")
+    if data.type == "voice" and not data.media:
+        raise HTTPException(status_code=400, detail="voice media required")
     if data.type == "share" and not data.share:
         raise HTTPException(status_code=400, detail="share payload required")
 
@@ -195,6 +198,7 @@ async def send_message(group_id: str, data: MessageCreate, current=Depends(get_c
         "type": data.type,
         "text": data.text,
         "media": data.media,
+        "duration_ms": data.duration_ms if data.type == "voice" else 0,
         "share": data.share or {},
         "reactions": {},  # emoji -> [user_ids]
         "read_by": [current["id"]],
@@ -202,7 +206,11 @@ async def send_message(group_id: str, data: MessageCreate, current=Depends(get_c
     }
     await db.group_messages.insert_one(msg.copy())
 
-    preview = data.text or {"image": "📷 Photo", "share": "🔗 Shared"}.get(data.type, "")
+    preview = data.text or {
+        "image": "📷 Photo",
+        "voice": "🎤 Voice note",
+        "share": "🔗 Shared",
+    }.get(data.type, "")
     await db.groups.update_one(
         {"id": group_id},
         {"$set": {"last_message_at": msg["created_at"], "last_message_preview": preview[:80]}},

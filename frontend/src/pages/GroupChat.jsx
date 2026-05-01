@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, Image as ImageIcon, Send, Smile, CheckCheck, Users } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Send, Smile, CheckCheck, Users, Settings } from "lucide-react";
 import { api, API, formatApiError } from "../lib/api";
 import { fileSrc, uploadFile } from "../lib/upload";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
+import VoiceRecorder from "../components/VoiceRecorder";
+import VoiceMessage from "../components/VoiceMessage";
+import GroupSettings from "../components/GroupSettings";
 
 const REACTIONS = ["❤️", "🔥", "👍", "😂", "😮", "🙏"];
 
@@ -18,6 +21,7 @@ export default function GroupChat() {
     const [sending, setSending] = useState(false);
     const [typingUsers, setTypingUsers] = useState({}); // user_id -> {username, until}
     const [reactPicker, setReactPicker] = useState(null);
+    const [showSettings, setShowSettings] = useState(false);
     const fileRef = useRef(null);
     const scrollerRef = useRef(null);
     const wsRef = useRef(null);
@@ -155,6 +159,20 @@ export default function GroupChat() {
         }
     };
 
+    const sendVoice = async (file, durationMs) => {
+        try {
+            toast.message("Uploading voice note…");
+            const up = await uploadFile(file);
+            await api.post(`/community/groups/${groupId}/messages`, {
+                type: "voice",
+                media: up.url || up.path,
+                duration_ms: durationMs,
+            });
+        } catch (err) {
+            toast.error(formatApiError(err.response?.data?.detail));
+        }
+    };
+
     const onType = (v) => {
         setText(v);
         if (typingDebounce.current) clearTimeout(typingDebounce.current);
@@ -218,6 +236,14 @@ export default function GroupChat() {
                         )}
                     </div>
                 </div>
+                <button
+                    onClick={() => setShowSettings(true)}
+                    className="grid h-9 w-9 place-items-center rounded-full hover:bg-accent"
+                    aria-label="Settings"
+                    data-testid="chat-settings-btn"
+                >
+                    <Settings size={18} />
+                </button>
             </header>
 
             {/* Messages */}
@@ -274,6 +300,13 @@ export default function GroupChat() {
                                                     src={fileSrc(m.media)}
                                                     alt=""
                                                     className="max-h-72 rounded-xl object-cover"
+                                                />
+                                            )}
+                                            {m.type === "voice" && (
+                                                <VoiceMessage
+                                                    src={m.media}
+                                                    durationMs={m.duration_ms || 0}
+                                                    mine={mine}
                                                 />
                                             )}
                                             {m.type === "share" && m.share && (
@@ -369,6 +402,7 @@ export default function GroupChat() {
                     <ImageIcon size={18} />
                 </button>
                 <input ref={fileRef} type="file" accept="image/*" onChange={sendImage} className="hidden" />
+                <VoiceRecorder onSend={sendVoice} disabled={sending} />
                 <input
                     value={text}
                     onChange={(e) => onType(e.target.value)}
@@ -385,6 +419,16 @@ export default function GroupChat() {
                     <Send size={16} />
                 </button>
             </form>
+
+            {showSettings && (
+                <GroupSettings
+                    group={group}
+                    onClose={() => setShowSettings(false)}
+                    onUpdated={async () => {
+                        await load();
+                    }}
+                />
+            )}
         </div>
     );
 }

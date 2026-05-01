@@ -27,6 +27,7 @@ import NotificationsBell from "./NotificationsBell";
 import XPBadge from "./XPBadge";
 import SearchBar from "./SearchBar";
 import TrialBadge from "./TrialBadge";
+import VerifyEmailBanner from "./VerifyEmailBanner";
 
 function buildNav(role) {
     const isCreator = role === "creator" || role === "admin";
@@ -216,7 +217,10 @@ export default function Layout({ children }) {
 
             {/* Main */}
             <main className="md:pl-64">
-                <div className="min-h-screen pb-24 md:pb-8">{children}</div>
+                <div className="min-h-screen pb-24 md:pb-8">
+                    {user && <div className="px-4 pt-3 md:pt-5"><VerifyEmailBanner /></div>}
+                    {children}
+                </div>
             </main>
 
             {/* Mobile bottom nav */}

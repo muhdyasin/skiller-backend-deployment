@@ -90,6 +90,25 @@ async def seed():
     await db.groups.create_index([("members", 1), ("last_message_at", -1)])
     await db.group_messages.create_index([("group_id", 1), ("created_at", -1)])
 
+    # ---- v7: email verification tokens (TTL 7d) ----
+    await db.email_verification_tokens.create_index("token", unique=True)
+    try:
+        existing = await db.email_verification_tokens.index_information()
+        if "expires_at_dt_1" in existing and "expireAfterSeconds" not in existing["expires_at_dt_1"]:
+            await db.email_verification_tokens.drop_index("expires_at_dt_1")
+    except Exception:
+        pass
+    await db.email_verification_tokens.create_index("expires_at_dt", expireAfterSeconds=0)
+    # Demo + admin accounts are pre-verified so they skip the nag
+    await db.users.update_many(
+        {"email": {"$in": ["admin@skiller.app", "maya@skiller.app", "arjun@skiller.app", "neha@skiller.app"]}},
+        {"$set": {"email_verified": True}},
+    )
+    # default others to unverified
+    await db.users.update_many(
+        {"email_verified": {"$exists": False}}, {"$set": {"email_verified": False}},
+    )
+
     # ---- v6: backfill — referral codes, trial, wallet for existing users ----
     from datetime import timedelta as _td
     import secrets as _sec

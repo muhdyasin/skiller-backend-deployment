@@ -110,6 +110,31 @@ async def send_web_push(user_id: str, title: str, body: str, url: str = "/notifi
             logger.warning(f"Web push error: {e}")
 
 
+def email_verification_html(name: str, link: str) -> str:
+    return f"""
+    <table width="100%" cellpadding="0" cellspacing="0" style="font-family:Arial,sans-serif;background:#f7f7f8;padding:24px">
+        <tr><td align="center">
+        <table width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;padding:32px;border:1px solid #eaeaea">
+            <tr><td>
+                <div style="font-size:22px;font-weight:800;color:#0a0a0a">skiller</div>
+                <h1 style="font-size:22px;color:#0a0a0a;margin:24px 0 8px">Verify your email</h1>
+                <p style="color:#475569;font-size:14px;line-height:1.6">
+                    Hi {name}, tap the button below to confirm your email address and unlock the full Skiller experience.
+                </p>
+                <p style="margin:24px 0">
+                    <a href="{link}" style="display:inline-block;background:#B91C1C;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:600">
+                        Verify email
+                    </a>
+                </p>
+                <p style="color:#94a3b8;font-size:12px">If the button doesn't work, paste this URL into your browser:<br/><a href="{link}" style="color:#B91C1C;word-break:break-all">{link}</a></p>
+                <p style="color:#94a3b8;font-size:12px;margin-top:24px">If you didn't sign up for Skiller, you can safely ignore this email.</p>
+            </td></tr>
+        </table>
+        </td></tr>
+    </table>
+    """
+
+
 # ---------- create_notification (with WS + Web Push fan-out) ----------
 async def create_notification(
     user_id: str,

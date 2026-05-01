@@ -1,0 +1,40 @@
+{
+  "summary": "Iter8 review for Skiller's 4 P2 items (voice notes, group settings UI, non-blocking email verification + 25XP, SSR OG share wrappers). Backend: created /app/backend/tests/test_iter8.py with 20 new pytest cases — 20/20 PASS. Full regression across iter1→iter8: 179/179 PASS in 148s. SSR /api/share/c/maya, /api/share/u/maya, /api/share/p/{id} all return 200 HTML with full OG/twitter/canonical/meta-refresh tags; /api/share/c/<missing> and /api/share/p/<missing> return 404; /api/share/p uses post.media for image posts and author.avatar_url (not the video URL) for video posts. Email verification: fresh signup creates email_verified=false user + email_verification_tokens row + EMAIL_VERIFICATION_LINK log; admin/maya/arjun/neha pre-verified per seed; /resend-verification returns {ok,already_verified} for verified user; rate-limited 429 within 60s for unverified user; /verify-email with valid token sets email_verified=true + email_verified_at + xp+=25 + token.used=true; invalid/used token returns 400. Voice notes: type='voice' with media+duration_ms persists & sets last_message_preview='🎤 Voice note'; type='voice' without media → 400 'voice media required'; text/image/share regression OK. Group settings PATCH/members add/self-leave still pass. /api/sitemap.xml regression OK. Frontend: registering brand-new user navigates to /home, mounts data-testid='verify-email-banner' with resend-verify-btn + verify-banner-close (close hides banner). /verify-email/BADTOKEN renders verify-email-page with verify-error. Admin and Maya logins land on /dashboard with NO banner (pre-verified). On /community/{group} page (Maya): group-chat ✓, chat-settings-btn opens group-settings-dialog containing group-name-input, group-desc-input, group-save-btn, group-members-list, add-member-input, add-member-btn, leave-group-btn (and remove-member-* for each member). chat-mic-btn visible in composer. /c/maya: document.title = 'Maya Sharma (@maya) — Skiller' (helmet override working); storefront-share-btn copies https://<origin>/api/share/c/maya to clipboard (✓). FOUND ONE FRONTEND BUG: /verify-email/<valid_token> ends in verify-error state instead of verify-success — backend correctly verifies the user (db shows email_verified=true, xp+=25, token.used=true) but the UI shows error. Root cause: VerifyEmail.jsx useEffect runs twice in React 18 StrictMode dev — first call succeeds, second call hits the now-used token and gets 400, overwriting state to 'error'. Fix: guard with useRef to ensure single dispatch, or treat 400 as success when current user.email_verified is already true.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "VerifyEmail.jsx", "issue": "Valid-token verify ends in verify-error state because useEffect fires twice under React StrictMode; second call hits used token → 400 → overwrites success state. User IS verified server-side (email_verified=true, xp+=25). Need a useRef guard or treat 'used' as success.", "selector": "[data-testid='verify-success']", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter8.py",
+    "/app/test_reports/pytest/iter8_results.xml",
+    "/app/test_reports/pytest/all_iter8_results.xml"
+  ],
+  "action_items": [
+    "Fix VerifyEmail.jsx StrictMode double-invocation: add useRef('did_dispatch') guard, OR on 400 response check /auth/me's email_verified before flipping to error state. Currently the UI shows 'Could not verify' even after a successful verification on the very first link click."
+  ],
+  "critical_code_review_comments": [
+    "/app/backend/routers/auth.py _issue_verification_token logs EMAIL_VERIFICATION_LINK only when APP_ENV != 'production' (good). Pre-existing PASSWORD_RESET_LINK info-log is also gated correctly now — iter4/iter5 carry-over resolved.",
+    "/app/backend/routers/auth.py:131-141 resend-verification rate limit relies on the most recent token's created_at being parseable from ISO string; works fine but consider storing created_at as a datetime to avoid the try/except + fromisoformat path (matches the pattern used for expires_at_dt).",
+    "/app/backend/routers/seo.py _og_html injects FRONTEND_URL into og:url and canonical via _site_root(); when FRONTEND_URL is unset both become bare '/c/<u>' which still renders but breaks unfurls. Add a fallback to the request's base URL.",
+    "/app/backend/routers/groups.py:189-201 voice validation runs only on type='voice'; type='image' currently does NOT require media (zero-byte image messages allowed). Consider symmetrical validation for image type.",
+    "/app/frontend/src/pages/VerifyEmail.jsx — single-shot guard missing; under React 18 StrictMode dev (and any double-render scenario), second POST overwrites success state with the 400 from the now-used token. Use useRef or check user.email_verified after refresh() before setting error.",
+    "Voice recorder MediaRecorder requires mic permission — in headless CI the chat-mic-btn is in DOM but click→record may silently fail; backend tests cover the API path. Suggest adding a feature flag for an upload-only fallback in unsupported browsers."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter8.py",
+    "/app/test_reports/pytest/iter8_results.xml",
+    "/app/test_reports/pytest/all_iter8_results.xml",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "success_rate": {"backend": "100% (179/179 incl. 20 new iter8 + 159 prior)", "frontend": "94% (16/17 — verify-success state under StrictMode is the only fail)"},
+  "test_credentials": "admin@skiller.app/Admin@123, maya@skiller.app/Demo@123, arjun@skiller.app/Demo@123, neha@skiller.app/Demo@123 — all working at end of run.",
+  "seed_data_creation": "Created 4-5 disposable test users with prefix 'test_iter8_*' and 'test_iter8fe_*' for verification flow + referral test. Non-destructive; demo creators untouched.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "pytest /app/backend/tests/ → 179 passing in ~150s. Iter8 added test_iter8.py covering /api/share/{c,u,p}/* SSR HTML wrappers, email verification flow (signup→token row→verify→XP), /resend-verification rate limit, voice messages with duration_ms + last_message_preview, group settings regressions. Frontend: only outstanding bug is VerifyEmail.jsx error-state on success due to StrictMode double-fire (server-side state IS correct). Reproduce: register fresh user → fetch unused token from db.email_verification_tokens → visit /verify-email/<token> → UI shows verify-error although db shows email_verified=true. Fix in VerifyEmail.jsx by adding useRef one-shot guard or by accepting 400 as success when /me reports email_verified=true after the call.",
+  "rca of the issue": "VerifyEmail.jsx (line 16-37) calls api.post('/auth/verify-email', {token}) inside useEffect with no idempotency guard. React 18 StrictMode (and any future re-render scenario) invokes the effect twice in dev. First POST → 200 (success state set). Second POST → token is now used=true → 400 → catch block flips state to 'error'. Verified empirically: db shows email_verified=true, xp incremented by 25, token.used=true after the request. Mitigation: const sentRef = useRef(false); if (sentRef.current) return; sentRef.current = true; before the api.post."
+}
