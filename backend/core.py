@@ -32,6 +32,7 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ['JWT_SECRET']
 JWT_ALG = "HS256"
 APP_NAME = os.environ.get("APP_NAME", "skiller")
+APP_ENV = os.environ.get("APP_ENV", "development")  # "production" suppresses dev logs
 EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
@@ -246,6 +247,103 @@ class WSManager:
 ws_manager = WSManager()
 
 
+# ---------- Referral / Tokens / Subscription helpers ----------
+TRIAL_DAYS = 30
+REFERRAL_REWARD_TOKENS = 500
+
+
+def generate_referral_code() -> str:
+    return secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
+
+
+def trial_premium_until() -> datetime:
+    return now() + timedelta(days=TRIAL_DAYS)
+
+
+async def ensure_token_wallet(user_id: str):
+    existing = await db.token_wallets.find_one({"user_id": user_id})
+    if not existing:
+        await db.token_wallets.insert_one({
+            "user_id": user_id,
+            "balance": 0,
+            "lifetime_earned": 0,
+            "lifetime_spent": 0,
+            "created_at": now_iso(),
+            "updated_at": now_iso(),
+        })
+
+
+async def credit_tokens(user_id: str, amount: int, reason: str, meta: Optional[dict] = None) -> int:
+    if amount <= 0:
+        return 0
+    await ensure_token_wallet(user_id)
+    res = await db.token_wallets.find_one_and_update(
+        {"user_id": user_id},
+        {
+            "$inc": {"balance": amount, "lifetime_earned": amount},
+            "$set": {"updated_at": now_iso()},
+        },
+        return_document=True,
+        projection={"_id": 0, "balance": 1},
+    )
+    await db.token_ledger.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": "credit",
+        "amount": amount,
+        "reason": reason,
+        "meta": meta or {},
+        "balance_after": res["balance"] if res else amount,
+        "created_at": now_iso(),
+    })
+    return res["balance"] if res else amount
+
+
+async def debit_tokens(user_id: str, amount: int, reason: str, meta: Optional[dict] = None) -> int:
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    await ensure_token_wallet(user_id)
+    wallet = await db.token_wallets.find_one({"user_id": user_id}, {"_id": 0, "balance": 1})
+    if not wallet or wallet.get("balance", 0) < amount:
+        raise HTTPException(status_code=400, detail="Insufficient token balance")
+    res = await db.token_wallets.find_one_and_update(
+        {"user_id": user_id, "balance": {"$gte": amount}},
+        {
+            "$inc": {"balance": -amount, "lifetime_spent": amount},
+            "$set": {"updated_at": now_iso()},
+        },
+        return_document=True,
+        projection={"_id": 0, "balance": 1},
+    )
+    if not res:
+        raise HTTPException(status_code=400, detail="Insufficient token balance")
+    await db.token_ledger.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": "debit",
+        "amount": amount,
+        "reason": reason,
+        "meta": meta or {},
+        "balance_after": res["balance"],
+        "created_at": now_iso(),
+    })
+    return res["balance"]
+
+
+def is_premium_active(user: dict) -> bool:
+    until = user.get("premium_until")
+    if not until:
+        return False
+    try:
+        if isinstance(until, str):
+            until = datetime.fromisoformat(until)
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=timezone.utc)
+        return until > now()
+    except Exception:
+        return False
+
+
 # ---------- Storage ----------
 def init_storage() -> Optional[str]:
     global storage_key
@@ -308,6 +406,7 @@ class RegisterIn(BaseModel):
     name: str
     username: str
     role: str = "student"
+    referral_code: Optional[str] = None
 
     @field_validator("role")
     @classmethod

@@ -46,16 +46,27 @@ India's learn-to-earn social network. Two distinct experiences in one app: Stude
 - Compound indexes added: `posts(user_id, created_at)`, `courses(owner_id, created_at)`, `gigs(owner_id, created_at)`, `enrollments(course_id)`, `applications(gig_id)`.
 - **SearchBar testid disambiguated** — `search-input` removed; `search-input-mobile` + `search-input-desktop` (and matching clear-btn variants) — based on `compact` prop.
 
+### v7 (this round — May 2026) — Subscription · Tokens · Stories · Community · SEO
+- **Free 30-day trial** on every account: `premium_until = signup + 30d`, `plan = "trial"`. Backfilled for all existing users in `seed.py`.
+- **Trial badge** in sidebar + mobile topbar that links to `/billing`; turns amber within 7 days, rose-red on expiry.
+- **`/billing` page** with single ACTIVE plan (`Skiller Trial Active` ₹299 / 30d), plus locked previews for Quarterly + Yearly. Razorpay/Stripe checkout returns `status=mock` until keys are wired; tokens-checkout (1 token = ₹1) goes live now and extends `premium_until`.
+- **Skill-token wallet** with idempotent ledger (`db.token_wallets`, `db.token_ledger`). Endpoints: `/api/wallet/me`, `/api/wallet/redeem` (purposes: `course`, `ads`, `ai_credits`), `/api/wallet/referral-link`.
+- **Referral system** — every user gets an 8-char `referral_code`. New users register with `?ref=CODE`; row created in `db.referrals` with `status=pending`. On the referred user's first paid (token) checkout, referrer is credited 500 tokens and status flips to `rewarded`.
+- **Stories** (Instagram-style) — `db.stories` with TTL index (24h). `StoryBar` component above `/home` and `/feed`; full-screen `StoryViewer` with progress segments, tap-zone navigation, view-tracking, and 24h-expiry display.
+- **Community / WhatsApp clone** (no status bar) — `/community` list + `/community/:groupId` chat. Supports DMs (idempotent — same pair always returns same group) and groups (admins, member-mgmt). Messages: text, image, share. Reactions toggle (one emoji per user with auto-swap), read receipts (double-tick turns blue when others read), typing indicators (WebSocket-broadcast). Real-time via existing `ws_manager`.
+- **SEO** — `react-helmet-async` per-page meta on Landing / Storefront / PostDetail. Dynamic OG title, description, image, JSON-LD (Person, Course offers). Strong site-wide defaults in `index.html`. Backend `/api/sitemap.xml` (lists creators + key pages) + `/api/og/c/{username}` (crawler-friendly metadata) + `/robots.txt` + `/sitemap.xml` redirect.
+- **3 P1 quick wins**: (a) `/api/search` parallelized via `asyncio.gather` (4 collection lookups concurrent); (b) `PASSWORD_RESET_LINK` log gated behind `APP_ENV != "production"`; (c) backend cleanup of unused-var lint warnings.
+
 ## Testing
-- 141/141 backend pytest passing (19 new iter6 tests + 122 prior)
-- Frontend storefront flow + tab navigation + search-id uniqueness verified at 1920×1080 and 390×844 viewports.
+- 159/159 backend pytest passing (18 new iter7 tests + 141 prior)
+- iter7 frontend smoke verified manually; full Playwright sweep pending next agent run.
 
 ## Backlog
-- P1: `RESEND_API_KEY` to enable real password-reset email delivery (currently logs link to backend log)
+- P1: `RESEND_API_KEY` to enable real password-reset email delivery (currently logs link to backend log when APP_ENV != "production")
+- P1: Razorpay primary + Stripe fallback wiring once keys are provided — replace `status=mock` checkout with real charges
 - P1: Migrate auth tokens from `localStorage` → `httpOnly` Secure cookies (XSS protection). Auth playbook trip required first.
-- P1: Gate `PASSWORD_RESET_LINK` info-log behind `APP_ENV != production` (carry-over from iter4)
-- P1: Parallelize `/api/search` collection lookups with `asyncio.gather` to halve p95 latency
-- P2: Stripe / Razorpay course checkout (revenue!)
-- P2: DM messaging
+- P2: Voice notes in chat, group avatars upload UI, group settings page (rename/leave)
 - P2: Email verification on signup
-- P2: OG/Twitter meta tags on `/c/<username>` for actual link unfurls (server-rendered or react-helmet)
+- P2: Server-side rendering for `/c/<username>` so WhatsApp/Slack unfurls work without JS-aware crawlers (currently only Google/LinkedIn read JS-rendered Helmet tags)
+- P2: Course detail page + per-course OG (currently only catalogue list)
+- P2: Post detail OG image generation (current uses raw media)

@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
+import { HelmetProvider, Helmet } from "react-helmet-async";
 import "./App.css";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -28,6 +29,10 @@ import Learning from "./pages/Learning";
 import Insights from "./pages/Insights";
 import CRM from "./pages/CRM";
 import CreatorStorefront from "./pages/CreatorStorefront";
+import Wallet from "./pages/Wallet";
+import Billing from "./pages/Billing";
+import Community from "./pages/Community";
+import GroupChat from "./pages/GroupChat";
 
 const Protected = ({ children }) => {
     const { user, loading } = useAuth();
@@ -148,6 +153,38 @@ function AppRoutes() {
                     </CreatorOnly>
                 }
             />
+            <Route
+                path="/wallet"
+                element={
+                    <Protected>
+                        <Shell><Wallet /></Shell>
+                    </Protected>
+                }
+            />
+            <Route
+                path="/billing"
+                element={
+                    <Protected>
+                        <Shell><Billing /></Shell>
+                    </Protected>
+                }
+            />
+            <Route
+                path="/community"
+                element={
+                    <Protected>
+                        <Shell><Community /></Shell>
+                    </Protected>
+                }
+            />
+            <Route
+                path="/community/:groupId"
+                element={
+                    <Protected>
+                        <Shell><GroupChat /></Shell>
+                    </Protected>
+                }
+            />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );
@@ -155,13 +192,30 @@ function AppRoutes() {
 
 export default function App() {
     return (
-        <ThemeProvider>
-            <AuthProvider>
-                <BrowserRouter>
-                    <AppRoutes />
-                    <Toaster position="top-center" richColors />
-                </BrowserRouter>
-            </AuthProvider>
-        </ThemeProvider>
+        <HelmetProvider>
+            <ThemeProvider>
+                <AuthProvider>
+                    <BrowserRouter>
+                        <Helmet defaultTitle="Skiller — India's learn-to-earn network" titleTemplate="%s · Skiller">
+                            <meta name="description" content="Skiller is India's learn-to-earn social network. Watch reels, take courses, post gigs, build your CRM, run ads, and earn skill tokens. Built for creators and learners." />
+                            <link rel="canonical" href={typeof window !== "undefined" ? window.location.href : "https://skiller.app"} />
+                            <meta property="og:site_name" content="Skiller" />
+                            <meta property="og:type" content="website" />
+                            <meta property="og:title" content="Skiller — Learn. Ship. Get paid." />
+                            <meta property="og:description" content="India's learn-to-earn social network. Reels, courses, gigs, AI recommendations, skill tokens." />
+                            <meta property="og:image" content="https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?w=1200&q=80" />
+                            <meta name="twitter:card" content="summary_large_image" />
+                            <meta name="twitter:title" content="Skiller — Learn. Ship. Get paid." />
+                            <meta name="twitter:description" content="India's learn-to-earn social network." />
+                            <meta name="twitter:image" content="https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?w=1200&q=80" />
+                            <meta name="theme-color" content="#B91C1C" />
+                            <meta name="robots" content="index,follow" />
+                        </Helmet>
+                        <AppRoutes />
+                        <Toaster position="top-center" richColors />
+                    </BrowserRouter>
+                </AuthProvider>
+            </ThemeProvider>
+        </HelmetProvider>
     );
 }

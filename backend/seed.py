@@ -68,6 +68,55 @@ async def seed():
             # Conflicting/old text index — keep current one rather than crash startup.
             pass
 
+    # ---- v6: token wallet, referrals, subscriptions ----
+    await db.token_wallets.create_index("user_id", unique=True)
+    await db.token_ledger.create_index([("user_id", 1), ("created_at", -1)])
+    await db.referrals.create_index([("referrer_id", 1), ("created_at", -1)])
+    await db.referrals.create_index("referred_user_id", unique=True)
+    await db.subscription_events.create_index([("user_id", 1), ("created_at", -1)])
+    await db.users.create_index("referral_code", unique=True, sparse=True)
+
+    # ---- v6: stories (TTL 24h) ----
+    await db.stories.create_index([("user_id", 1), ("created_at", -1)])
+    try:
+        existing = await db.stories.index_information()
+        if "expires_at_dt_1" in existing and "expireAfterSeconds" not in existing["expires_at_dt_1"]:
+            await db.stories.drop_index("expires_at_dt_1")
+    except Exception:
+        pass
+    await db.stories.create_index("expires_at_dt", expireAfterSeconds=0)
+
+    # ---- v6: community groups + messages ----
+    await db.groups.create_index([("members", 1), ("last_message_at", -1)])
+    await db.group_messages.create_index([("group_id", 1), ("created_at", -1)])
+
+    # ---- v6: backfill — referral codes, trial, wallet for existing users ----
+    from datetime import timedelta as _td
+    import secrets as _sec
+    async for u in db.users.find({"referral_code": {"$in": [None, ""]}}, {"id": 1}):
+        for _ in range(5):
+            code = _sec.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
+            if not await db.users.find_one({"referral_code": code}):
+                break
+        await db.users.update_one({"id": u["id"]}, {"$set": {"referral_code": code}})
+    async for u in db.users.find({"premium_until": {"$exists": False}}, {"id": 1, "created_at": 1}):
+        from datetime import datetime as _dt, timezone as _tz
+        try:
+            ca = _dt.fromisoformat(u["created_at"]) if isinstance(u.get("created_at"), str) else u.get("created_at") or _dt.now(_tz.utc)
+            if ca.tzinfo is None:
+                ca = ca.replace(tzinfo=_tz.utc)
+        except Exception:
+            ca = _dt.now(_tz.utc)
+        until = max(ca + _td(days=30), _dt.now(_tz.utc) + _td(days=30))
+        await db.users.update_one({"id": u["id"]}, {"$set": {"premium_until": until.isoformat(), "plan": "trial"}})
+    async for u in db.users.find({}, {"id": 1}):
+        if not await db.token_wallets.find_one({"user_id": u["id"]}):
+            await db.token_wallets.insert_one({
+                "user_id": u["id"], "balance": 0,
+                "lifetime_earned": 0, "lifetime_spent": 0,
+                "created_at": now_iso(), "updated_at": now_iso(),
+            })
+
     await db.users.update_many(
         {"xp": {"$exists": False}},
         {"$set": {"xp": 0, "badges": [], "streak": 0, "last_login_date": None}},

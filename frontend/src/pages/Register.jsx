@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { Logo } from "../components/Logo";
 import { Button } from "../components/ui/button";
@@ -8,19 +8,28 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { formatApiError } from "../lib/api";
 import ThemeToggle from "../components/ThemeToggle";
-import { GraduationCap, Briefcase } from "lucide-react";
+import { GraduationCap, Briefcase, Gift } from "lucide-react";
 
 export default function Register() {
     const { register } = useAuth();
     const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const refFromUrl = (params.get("ref") || "").trim().toUpperCase();
     const [form, setForm] = useState({
         name: "",
         username: "",
         email: "",
         password: "",
         role: "student",
+        referral_code: refFromUrl,
     });
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (refFromUrl) {
+            setForm((f) => ({ ...f, referral_code: refFromUrl }));
+        }
+    }, [refFromUrl]);
 
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -145,6 +154,15 @@ export default function Register() {
                                 ? "Creating account…"
                                 : `Create ${form.role === "creator" ? "creator" : "student"} account`}
                         </Button>
+                        {form.referral_code && (
+                            <div
+                                className="flex items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-2 text-xs text-primary"
+                                data-testid="referral-banner"
+                            >
+                                <Gift size={14} />
+                                Joining via referral code <strong>{form.referral_code}</strong> — your friend earns 500 tokens when you go premium.
+                            </div>
+                        )}
                     </form>
                 </div>
             </div>

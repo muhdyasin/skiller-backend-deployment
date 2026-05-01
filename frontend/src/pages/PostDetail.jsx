@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Heart, Send, Bookmark } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 import { api, formatApiError } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { toast } from "sonner";
@@ -61,6 +62,17 @@ export default function PostDetail() {
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-6" data-testid="post-detail-page">
+            <Helmet>
+                <title>{post.caption ? post.caption.slice(0, 60) : `Post by @${author.username || "creator"}`}</title>
+                <meta name="description" content={(post.caption || `Post by @${author.username || "creator"} on Skiller`).slice(0, 160)} />
+                <meta property="og:type" content={post.media_type === "video" ? "video.other" : "article"} />
+                <meta property="og:title" content={post.caption ? post.caption.slice(0, 80) : `Post by @${author.username || "creator"}`} />
+                <meta property="og:description" content={(post.caption || `Skiller post by @${author.username || "creator"}`).slice(0, 200)} />
+                <meta property="og:image" content={fileSrc(post.media) || "https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?w=1200&q=80"} />
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:image" content={fileSrc(post.media) || ""} />
+                {author.username && <meta name="twitter:creator" content={`@${author.username}`} />}
+            </Helmet>
             <div className="grid grid-cols-1 gap-6 overflow-hidden rounded-2xl border border-border md:grid-cols-[1fr_360px]">
                 <div className="bg-black">
                     {post.media_type === "video" ? (

@@ -1,0 +1,9 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /reset-password/
+Disallow: /forgot-password
+Disallow: /community/
+
+Sitemap: /api/sitemap.xml

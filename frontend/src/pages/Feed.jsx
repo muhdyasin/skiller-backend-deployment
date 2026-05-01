@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { AdRotator } from "../components/AdCard";
 import AIRecommendations from "../components/AIRecommendations";
+import StoryBar from "../components/StoryBar";
 
 export default function Feed() {
     const { user } = useAuth();
@@ -39,6 +40,7 @@ export default function Feed() {
             data-testid="feed-page"
         >
             <div className="mx-auto w-full max-w-xl">
+                <StoryBar />
                 <div className="mb-6 flex items-baseline justify-between">
                     <h1 className="font-display text-2xl font-bold tracking-tight">
                         Your feed

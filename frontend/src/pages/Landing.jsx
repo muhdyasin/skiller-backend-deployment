@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ArrowRight, Sparkles, Upload, BookOpen, Briefcase } from "lucide-react";
+import { Helmet } from "react-helmet-async";
 import { Logo } from "../components/Logo";
 import { Button } from "../components/ui/button";
 import { useTheme } from "../context/ThemeContext";
@@ -12,10 +13,32 @@ const features = [
     { icon: Briefcase, title: "Earn from day one", desc: "Freelance gigs and projects matched to your skills." },
 ];
 
+const LANDING_LD = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Skiller",
+    alternateName: "Skiller — India's learn-to-earn network",
+    url: "https://skiller.app",
+    potentialAction: {
+        "@type": "SearchAction",
+        target: "https://skiller.app/search?q={search_term_string}",
+        "query-input": "required name=search_term_string",
+    },
+};
+
 export default function Landing() {
     const { theme, toggle } = useTheme();
     return (
         <div className="min-h-screen bg-background text-foreground" data-testid="landing-page">
+            <Helmet>
+                <title>India's learn-to-earn social network</title>
+                <meta name="description" content="Skiller — Learn skills, watch creator reels, take courses, post gigs, run a CRM, earn skill tokens. India's first L2EARN platform for students and creators." />
+                <meta name="keywords" content="skiller, learn to earn, india, online courses, freelance gigs, ai recommendations, creators, edtech, social learning" />
+                <meta property="og:type" content="website" />
+                <meta property="og:title" content="Skiller — Learn. Ship. Get paid." />
+                <meta property="og:description" content="India's learn-to-earn social network. Reels, courses, gigs, AI, skill tokens, community chat." />
+                <script type="application/ld+json">{JSON.stringify(LANDING_LD)}</script>
+            </Helmet>
             <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
                 <Logo />
                 <div className="flex items-center gap-2">

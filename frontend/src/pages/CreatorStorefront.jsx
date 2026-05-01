@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { api, formatApiError } from "../lib/api";
 import { fileSrc } from "../lib/upload";
 import { useAuth } from "../context/AuthContext";
@@ -55,6 +56,39 @@ export default function CreatorStorefront() {
             document.title = prev;
         };
     }, [data]);
+
+    // Build OG payload for the storefront — used by react-helmet
+    const ogTitle = data?.user
+        ? `${data.user.name} (@${data.user.username}) on Skiller`
+        : "Skiller creator";
+    const ogDescription = data?.user
+        ? `${data.user.bio || `Creator on Skiller`} · ${data.stats?.courses || 0} courses · ${data.stats?.gigs || 0} gigs · ${data.stats?.followers || 0} followers`
+        : "Discover creators on Skiller — India's learn-to-earn network.";
+    const ogImage = data?.user?.avatar_url || "https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?w=1200&q=80";
+    const canonical = typeof window !== "undefined" ? window.location.href : "";
+
+    const jsonLd = data?.user
+        ? {
+              "@context": "https://schema.org",
+              "@type": "Person",
+              name: data.user.name,
+              alternateName: `@${data.user.username}`,
+              description: data.user.bio || undefined,
+              image: data.user.avatar_url || undefined,
+              url: canonical || undefined,
+              knowsAbout: (data.badges || []).map((b) => b.title).slice(0, 6),
+              makesOffer: (data.courses || []).slice(0, 6).map((c) => ({
+                  "@type": "Offer",
+                  itemOffered: {
+                      "@type": "Course",
+                      name: c.title,
+                      description: c.description || c.title,
+                  },
+                  price: c.price || 0,
+                  priceCurrency: "INR",
+              })),
+          }
+        : null;
 
     const follow = async () => {
         if (!currentUser) {
@@ -116,6 +150,24 @@ export default function CreatorStorefront() {
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-6" data-testid="creator-storefront">
+            <Helmet>
+                <title>{`${data.user.name} (@${data.user.username})`}</title>
+                <meta name="description" content={ogDescription} />
+                <link rel="canonical" href={canonical} />
+                <meta property="og:type" content="profile" />
+                <meta property="og:title" content={ogTitle} />
+                <meta property="og:description" content={ogDescription} />
+                <meta property="og:image" content={ogImage} />
+                <meta property="og:url" content={canonical} />
+                <meta property="profile:username" content={data.user.username} />
+                <meta name="twitter:card" content="summary_large_image" />
+                <meta name="twitter:title" content={ogTitle} />
+                <meta name="twitter:description" content={ogDescription} />
+                <meta name="twitter:image" content={ogImage} />
+                {jsonLd && (
+                    <script type="application/ld+json">{JSON.stringify(jsonLd)}</script>
+                )}
+            </Helmet>
             {/* Hero */}
             <div className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-primary/10 via-background to-background">
                 <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:p-10">

@@ -26,6 +26,11 @@ from routers.files import router as files_router
 from routers.ws import router as ws_router
 from routers.search import router as search_router
 from routers.push import router as push_router
+from routers.billing import router as billing_router
+from routers.wallet import router as wallet_router
+from routers.stories import router as stories_router
+from routers.groups import router as groups_router
+from routers.seo import router as seo_router
 
 logger = logging.getLogger("skiller")
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +50,11 @@ app.include_router(files_router)
 app.include_router(ws_router)
 app.include_router(search_router)
 app.include_router(push_router)
+app.include_router(billing_router)
+app.include_router(wallet_router)
+app.include_router(stories_router)
+app.include_router(groups_router)
+app.include_router(seo_router)
 
 
 @app.on_event("startup")

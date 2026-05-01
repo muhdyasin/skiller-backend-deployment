@@ -15,6 +15,9 @@ import {
     GraduationCap,
     LineChart,
     UsersRound,
+    Coins,
+    Crown,
+    MessageCircle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
@@ -23,6 +26,7 @@ import { Button } from "./ui/button";
 import NotificationsBell from "./NotificationsBell";
 import XPBadge from "./XPBadge";
 import SearchBar from "./SearchBar";
+import TrialBadge from "./TrialBadge";
 
 function buildNav(role) {
     const isCreator = role === "creator" || role === "admin";
@@ -33,6 +37,7 @@ function buildNav(role) {
         { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
         { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
         { to: "/learning", label: "My Learning", icon: GraduationCap, tid: "nav-learning" },
+        { to: "/community", label: "Community", icon: MessageCircle, tid: "nav-community" },
     ];
     const creatorNav = [
         { to: "/feed", label: "Feed", icon: Home, tid: "nav-feed" },
@@ -40,6 +45,7 @@ function buildNav(role) {
         { to: "/upload", label: "Upload", icon: PlusSquare, tid: "nav-upload" },
         { to: "/courses", label: "Courses", icon: BookOpen, tid: "nav-courses" },
         { to: "/gigs", label: "Gigs", icon: Briefcase, tid: "nav-gigs" },
+        { to: "/community", label: "Community", icon: MessageCircle, tid: "nav-community" },
     ];
     const creatorOnly = [
         { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, tid: "nav-dashboard" },
@@ -47,13 +53,15 @@ function buildNav(role) {
         { to: "/crm", label: "CRM", icon: UsersRound, tid: "nav-crm" },
     ];
     const tail = [
+        { to: "/wallet", label: "Wallet", icon: Coins, tid: "nav-wallet" },
+        { to: "/billing", label: "Subscription", icon: Crown, tid: "nav-billing" },
         { to: "/leaderboard", label: "Leaderboard", icon: Trophy, tid: "nav-leaderboard" },
     ];
     return isCreator ? [...creatorNav, ...creatorOnly, ...tail] : [...studentNav, ...tail];
 }
 
-const MOBILE_BAR_STUDENT = ["/home", "/reels", "/courses", "/gigs"];
-const MOBILE_BAR_CREATOR = ["/feed", "/upload", "/courses", "/dashboard"];
+const MOBILE_BAR_STUDENT = ["/home", "/reels", "/community", "/courses"];
+const MOBILE_BAR_CREATOR = ["/feed", "/upload", "/community", "/dashboard"];
 
 export default function Layout({ children }) {
     const { user, logout } = useAuth();
@@ -117,8 +125,9 @@ export default function Layout({ children }) {
                 </nav>
 
                 {user && (
-                    <div className="mt-3">
+                    <div className="mt-3 space-y-2">
                         <XPBadge user={user} />
+                        <TrialBadge />
                     </div>
                 )}
 
@@ -163,6 +172,7 @@ export default function Layout({ children }) {
                 <div className="flex items-center justify-between">
                     <Logo size="sm" />
                     <div className="flex items-center gap-1">
+                        {user && <TrialBadge compact />}
                         {user && <XPBadge user={user} compact />}
                         <NotificationsBell />
                         <button

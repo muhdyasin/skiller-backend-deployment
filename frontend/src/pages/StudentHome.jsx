@@ -4,6 +4,7 @@ import { Heart, MessageCircle, Play } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../context/AuthContext";
 import { fileSrc } from "../lib/upload";
+import StoryBar from "../components/StoryBar";
 
 const CATEGORIES = ["All", "Design", "Code", "Product", "Reels", "Career"];
 
@@ -87,6 +88,7 @@ export default function StudentHome() {
 
     return (
         <div className="mx-auto max-w-7xl px-4 py-6" data-testid="student-home">
+            <StoryBar />
             <div className="mb-5 flex flex-wrap items-center gap-2">
                 {CATEGORIES.map((c) => (
                     <button

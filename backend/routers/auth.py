@@ -9,8 +9,9 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from core import (
     db, now, now_iso, hash_password, verify_password, create_access_token,
-    get_current_user, get_user_by_id, award_xp, FRONTEND_URL,
+    get_current_user, get_user_by_id, award_xp, FRONTEND_URL, APP_ENV,
     RegisterIn, LoginIn, ForgotPasswordIn, ResetPasswordIn,
+    generate_referral_code, ensure_token_wallet, trial_premium_until,
 )
 from notifications_service import send_email, password_reset_html
 
@@ -48,14 +49,42 @@ async def register(data: RegisterIn):
     if await db.users.find_one({"username": data.username.lower().strip()}):
         raise HTTPException(status_code=400, detail="Username already taken")
     user_id = str(uuid.uuid4())
+
+    # Generate a unique referral code
+    for _ in range(5):
+        ref_code = generate_referral_code()
+        if not await db.users.find_one({"referral_code": ref_code}):
+            break
+
+    # Resolve who referred this user (via stored cookie/body field)
+    referred_by = None
+    incoming_ref = (data.referral_code or "").strip().upper() if data.referral_code else None
+    if incoming_ref:
+        ref_user = await db.users.find_one({"referral_code": incoming_ref}, {"_id": 0, "id": 1})
+        if ref_user:
+            referred_by = ref_user["id"]
+
     doc = {
         "id": user_id, "email": email, "username": data.username.lower().strip(),
         "name": data.name.strip(), "password_hash": hash_password(data.password),
         "bio": "", "avatar_url": "", "followers": [], "following": [],
         "role": data.role, "xp": 0, "badges": [], "streak": 0,
         "last_login_date": None, "created_at": now_iso(),
+        "referral_code": ref_code,
+        "referred_by": referred_by,
+        "premium_until": trial_premium_until().isoformat(),
+        "plan": "trial",
     }
     await db.users.insert_one(doc)
+    await ensure_token_wallet(user_id)
+    if referred_by:
+        await db.referrals.insert_one({
+            "id": str(uuid.uuid4()),
+            "referrer_id": referred_by,
+            "referred_user_id": user_id,
+            "status": "pending",  # → "rewarded" after first paid subscription
+            "created_at": now_iso(),
+        })
     await update_streak_on_login(user_id)
     token = create_access_token(user_id, email)
     return {"token": token, "user": await get_user_by_id(user_id)}
@@ -95,7 +124,8 @@ async def forgot_password(data: ForgotPasswordIn):
             "created_at": now_iso(),
         })
         link = f"{FRONTEND_URL.rstrip('/')}/reset-password/{token}" if FRONTEND_URL else f"/reset-password/{token}"
-        logger.info(f"PASSWORD_RESET_LINK for {email}: {link}")
+        if APP_ENV != "production":
+            logger.info(f"PASSWORD_RESET_LINK for {email}: {link}")
         try:
             await send_email(
                 to_email=email,
