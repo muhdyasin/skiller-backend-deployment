@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
 import { CheckCircle2, XCircle } from "lucide-react";
@@ -12,8 +12,13 @@ export default function VerifyEmail() {
     const { refresh, user } = useAuth();
     const [state, setState] = useState("loading"); // loading | success | error
     const [message, setMessage] = useState("");
+    const sentRef = useRef(false);
 
     useEffect(() => {
+        // Single-shot guard — StrictMode would otherwise fire this twice in dev,
+        // and the second call would hit a now-used token and flip to error.
+        if (sentRef.current) return;
+        sentRef.current = true;
         let cancel = false;
         (async () => {
             try {
@@ -24,6 +29,24 @@ export default function VerifyEmail() {
                 if (user) await refresh();
             } catch (err) {
                 if (cancel) return;
+                // If the user is already verified (e.g. double-fire race),
+                // treat as success instead of error.
+                if (user?.email_verified) {
+                    setState("success");
+                    setMessage("Your email is already verified.");
+                    return;
+                }
+                try {
+                    const me = await api.get("/auth/me");
+                    if (me.data?.email_verified) {
+                        setState("success");
+                        setMessage("Your email is verified. +25 XP unlocked!");
+                        await refresh();
+                        return;
+                    }
+                } catch {
+                    /* ignore */
+                }
                 setState("error");
                 setMessage(
                     formatApiError(err.response?.data?.detail) ||
