@@ -57,7 +57,7 @@ India's learn-to-earn social network. Two distinct experiences in one app: Stude
 - **SEO** — react-helmet-async per-page meta (Landing, Storefront, Post). JSON-LD. `/api/sitemap.xml`, `/api/og/c/{u}`, `robots.txt`.
 - **3 quick wins** — parallel `/api/search` (asyncio.gather), APP_ENV-gated dev log, lint cleanup.
 
-### v8 (this round — May 2026) — Voice Notes · Group Settings · Email Verification · SSR Unfurls
+### v8 (May 2026) — Voice Notes · Group Settings · Email Verification · SSR Unfurls
 - **Email verification (non-blocking)** — new users get `email_verified=false`, receive a verification email (+dev-log link when APP_ENV != production). `/api/auth/verify-email` awards **+25 XP** on success. `/api/auth/resend-verification` with 60s rate-limit. New `/verify-email/:token` page. Global `VerifyEmailBanner` mounts in Layout above all authenticated content (dismissible). Demo users pre-verified.
 - **Voice notes in chat** — `VoiceRecorder` component (MediaRecorder API, 2-min cap, waveform preview, discard/send) + `VoiceMessage` playback bubble. `type="voice"` messages persist with `duration_ms`; last-message-preview shows "🎤 Voice note".
 - **Group settings UI** — `GroupSettings` dialog (opened from chat header) with rename, description, avatar upload, member add (username input), per-member remove (admin only), leave-group / close-DM. DMs show only "Close chat" (no rename/avatar/members list).
@@ -68,27 +68,25 @@ India's learn-to-earn social network. Two distinct experiences in one app: Stude
 - **179/179 backend pytest passing** (20 new iter8 + 159 prior)
 - Frontend: verify-email flow, resend/close banner, group settings, voice recorder mic button, storefront share URL, SSR wrappers all verified by testing_agent_v3 + manual Playwright.
 
+### v9 (this round — May 2026) — Razorpay LIVE (test mode) checkout
+- **Razorpay Standard Checkout** wired end-to-end on the `Skiller Trial Active` ₹299 / 30d plan.
+  - Backend `POST /api/billing/checkout` with `pay_with=razorpay` creates a real Razorpay Order via `client.order.create({amount, currency, receipt, payment_capture, notes})` and returns `key_id + order_id + amount + currency + plan_name + prefill` to the client.
+  - Frontend lazily loads `https://checkout.razorpay.com/v1/checkout.js` once, opens the modal with handler-based flow, prefills name+email, theme=#B91C1C.
+  - `POST /api/billing/verify-payment` performs `hmac.compare_digest` on `HMAC-SHA256(order_id|payment_id, secret)` server-side. Invalid signature → 400. Valid → extends `premium_until`, flips `plan='pro'`, fires referral reward, persists `subscription_events`.
+  - **Idempotent**: re-verifying the same order_id+payment_id returns `status='already_paid'` (no double-credit).
+- Stripe checkout remains mock until Stripe keys arrive.
+- **186/186 backend pytest** pass (7 new iter9).
+
 ## Backlog
 - P1: `RESEND_API_KEY` to deliver real verification & password-reset emails (currently logs when APP_ENV != production)
-- P1: Razorpay + Stripe live keys to flip `/api/billing/checkout` from mock to real
+- P1: Stripe Key ID + Secret → flip Stripe checkout from mock to live (international cards)
+- P1: Razorpay webhook endpoint (`POST /api/billing/razorpay-webhook`) for server-side guarantee on payment.captured (currently we trust handler callback). Needs `RAZORPAY_WEBHOOK_SECRET`.
 - P1: httpOnly Secure cookie migration for JWT (XSS hardening) — auth playbook trip required
 - P2: Voice recorder fallback for browsers without MediaRecorder (iOS Safari < 14.5)
 - P2: OG image generator (e.g. 1200×630 dynamic PNG with Indian Red brand frame + name/avatar overlay) for richer unfurls
 - P2: Crawl-friendly static sitemap at root `/sitemap.xml` (currently redirects to `/api/sitemap.xml`)
 - P2: Stories reactions + views list (who viewed my story)
-- **Free 30-day trial** on every account: `premium_until = signup + 30d`, `plan = "trial"`. Backfilled for all existing users in `seed.py`.
-- **Trial badge** in sidebar + mobile topbar that links to `/billing`; turns amber within 7 days, rose-red on expiry.
-- **`/billing` page** with single ACTIVE plan (`Skiller Trial Active` ₹299 / 30d), plus locked previews for Quarterly + Yearly. Razorpay/Stripe checkout returns `status=mock` until keys are wired; tokens-checkout (1 token = ₹1) goes live now and extends `premium_until`.
-- **Skill-token wallet** with idempotent ledger (`db.token_wallets`, `db.token_ledger`). Endpoints: `/api/wallet/me`, `/api/wallet/redeem` (purposes: `course`, `ads`, `ai_credits`), `/api/wallet/referral-link`.
-- **Referral system** — every user gets an 8-char `referral_code`. New users register with `?ref=CODE`; row created in `db.referrals` with `status=pending`. On the referred user's first paid (token) checkout, referrer is credited 500 tokens and status flips to `rewarded`.
-- **Stories** (Instagram-style) — `db.stories` with TTL index (24h). `StoryBar` component above `/home` and `/feed`; full-screen `StoryViewer` with progress segments, tap-zone navigation, view-tracking, and 24h-expiry display.
-- **Community / WhatsApp clone** (no status bar) — `/community` list + `/community/:groupId` chat. Supports DMs (idempotent — same pair always returns same group) and groups (admins, member-mgmt). Messages: text, image, share. Reactions toggle (one emoji per user with auto-swap), read receipts (double-tick turns blue when others read), typing indicators (WebSocket-broadcast). Real-time via existing `ws_manager`.
-- **SEO** — `react-helmet-async` per-page meta on Landing / Storefront / PostDetail. Dynamic OG title, description, image, JSON-LD (Person, Course offers). Strong site-wide defaults in `index.html`. Backend `/api/sitemap.xml` (lists creators + key pages) + `/api/og/c/{username}` (crawler-friendly metadata) + `/robots.txt` + `/sitemap.xml` redirect.
-- **3 P1 quick wins**: (a) `/api/search` parallelized via `asyncio.gather` (4 collection lookups concurrent); (b) `PASSWORD_RESET_LINK` log gated behind `APP_ENV != "production"`; (c) backend cleanup of unused-var lint warnings.
-
-## Testing
-- 159/159 backend pytest passing (18 new iter7 tests + 141 prior)
-- iter7 frontend smoke verified manually; full Playwright sweep pending next agent run.
+- P2: Quarterly + Yearly plans flip to active once you decide pricing
 
 ## Backlog
 - P1: `RESEND_API_KEY` to enable real password-reset email delivery (currently logs link to backend log when APP_ENV != "production")

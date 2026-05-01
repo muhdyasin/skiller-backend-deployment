@@ -3,8 +3,29 @@ import { Crown, Check, Sparkles, Lock, Coins } from "lucide-react";
 import { api, formatApiError } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
+import { useAuth } from "../context/AuthContext";
+
+// Inject the Razorpay Checkout JS once and reuse globally.
+let _rzpScriptPromise = null;
+function loadRazorpay() {
+    if (_rzpScriptPromise) return _rzpScriptPromise;
+    _rzpScriptPromise = new Promise((resolve, reject) => {
+        if (window.Razorpay) return resolve(window.Razorpay);
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.async = true;
+        s.onload = () => resolve(window.Razorpay);
+        s.onerror = () => {
+            _rzpScriptPromise = null;
+            reject(new Error("Could not load Razorpay"));
+        };
+        document.body.appendChild(s);
+    });
+    return _rzpScriptPromise;
+}
 
 export default function Billing() {
+    const { user } = useAuth();
     const [plans, setPlans] = useState([]);
     const [meta, setMeta] = useState({ trial_days: 30, referral_reward_tokens: 500 });
     const [me, setMe] = useState(null);
@@ -39,12 +60,71 @@ export default function Billing() {
         try {
             setPaying(true);
             const { data } = await api.post("/billing/checkout", { plan_id, pay_with });
-            if (data.status === "mock") {
-                toast.message("Coming soon", { description: data.message });
-            } else if (data.status === "paid") {
+
+            if (data.status === "paid") {
                 toast.success("Subscription active 🎉");
                 await load();
+                return;
             }
+            if (data.status === "mock") {
+                toast.message("Coming soon", { description: data.message });
+                return;
+            }
+            if (data.status === "order_created" && data.provider === "razorpay") {
+                const Razorpay = await loadRazorpay();
+                if (!Razorpay) {
+                    toast.error("Could not open Razorpay checkout");
+                    return;
+                }
+                await new Promise((resolve) => {
+                    const rzp = new Razorpay({
+                        key: data.key_id,
+                        amount: data.amount,
+                        currency: data.currency,
+                        name: "Skiller",
+                        description: data.plan_name,
+                        order_id: data.order_id,
+                        prefill: {
+                            name: data.prefill?.name || user?.name || "",
+                            email: data.prefill?.email || user?.email || "",
+                        },
+                        notes: data.notes || {},
+                        theme: { color: "#B91C1C" },
+                        modal: {
+                            ondismiss: () => {
+                                toast.message("Checkout closed");
+                                resolve();
+                            },
+                        },
+                        handler: async (response) => {
+                            try {
+                                const verify = await api.post("/billing/verify-payment", {
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_signature: response.razorpay_signature,
+                                });
+                                if (verify.data.status === "paid" || verify.data.status === "already_paid") {
+                                    toast.success("Payment verified · subscription active 🎉");
+                                    await load();
+                                } else {
+                                    toast.error("Verification failed");
+                                }
+                            } catch (err) {
+                                toast.error(formatApiError(err.response?.data?.detail) || "Verification failed");
+                            } finally {
+                                resolve();
+                            }
+                        },
+                    });
+                    rzp.on?.("payment.failed", (resp) => {
+                        toast.error(`Payment failed: ${resp.error?.description || "unknown"}`);
+                        resolve();
+                    });
+                    rzp.open();
+                });
+                return;
+            }
+            toast.message(data.message || "Unknown response");
         } catch (err) {
             toast.error(formatApiError(err.response?.data?.detail));
         } finally {

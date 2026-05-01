@@ -73,16 +73,19 @@ class TestBilling:
         assert data["plan"] in ("trial", "pro")
 
     def test_checkout_razorpay_mock(self, maya_token):
+        # iter9: Razorpay is now LIVE in test mode — should return order_created
         r = requests.post(
             f"{API}/billing/checkout",
             json={"plan_id": "trial_active", "pay_with": "razorpay"},
             headers=_headers(maya_token),
-            timeout=10,
+            timeout=15,
         )
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["status"] == "mock"
-        assert "message" in data
+        assert data["status"] == "order_created"
+        assert data["provider"] == "razorpay"
+        assert data["order_id"].startswith("order_")
+        assert data["amount"] == 29900
 
     def test_checkout_stripe_mock(self, maya_token):
         r = requests.post(
