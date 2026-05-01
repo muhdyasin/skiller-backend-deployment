@@ -46,7 +46,36 @@ India's learn-to-earn social network. Two distinct experiences in one app: Stude
 - Compound indexes added: `posts(user_id, created_at)`, `courses(owner_id, created_at)`, `gigs(owner_id, created_at)`, `enrollments(course_id)`, `applications(gig_id)`.
 - **SearchBar testid disambiguated** — `search-input` removed; `search-input-mobile` + `search-input-desktop` (and matching clear-btn variants) — based on `compact` prop.
 
-### v7 (this round — May 2026) — Subscription · Tokens · Stories · Community · SEO
+### v7 (Feb 2026) — Subscription · Tokens · Stories · Community · SEO
+- **Free 30-day trial** per account (`premium_until = signup + 30d`, `plan="trial"`). Backfilled for all existing users.
+- **Trial badge** in sidebar + mobile topbar; amber ≤7d left, rose on expiry.
+- **`/billing` page** with `Skiller Trial Active` ₹299/30d (ACTIVE) + locked Quarterly/Yearly previews. Razorpay/Stripe return `status=mock`; tokens-checkout is live.
+- **Skill-token wallet** (`db.token_wallets` + `db.token_ledger`). Endpoints: `/api/wallet/me`, `/api/wallet/redeem` (course/ads/ai_credits), `/api/wallet/referral-link`.
+- **Referral system** — 8-char codes, `?ref=` capture on signup, **500 tokens** on referee's first paid subscription.
+- **Stories** (Instagram-style) with 24h TTL. `StoryBar` on `/home` + `/feed`; full-screen viewer with progress segments, tap-nav, view tracking.
+- **Community / WhatsApp clone (no status bar)** — `/community` + `/community/:id` chat. DMs (idempotent) + groups. Text/image/share messages, toggle reactions, blue double-tick read receipts, typing indicators via WebSocket.
+- **SEO** — react-helmet-async per-page meta (Landing, Storefront, Post). JSON-LD. `/api/sitemap.xml`, `/api/og/c/{u}`, `robots.txt`.
+- **3 quick wins** — parallel `/api/search` (asyncio.gather), APP_ENV-gated dev log, lint cleanup.
+
+### v8 (this round — May 2026) — Voice Notes · Group Settings · Email Verification · SSR Unfurls
+- **Email verification (non-blocking)** — new users get `email_verified=false`, receive a verification email (+dev-log link when APP_ENV != production). `/api/auth/verify-email` awards **+25 XP** on success. `/api/auth/resend-verification` with 60s rate-limit. New `/verify-email/:token` page. Global `VerifyEmailBanner` mounts in Layout above all authenticated content (dismissible). Demo users pre-verified.
+- **Voice notes in chat** — `VoiceRecorder` component (MediaRecorder API, 2-min cap, waveform preview, discard/send) + `VoiceMessage` playback bubble. `type="voice"` messages persist with `duration_ms`; last-message-preview shows "🎤 Voice note".
+- **Group settings UI** — `GroupSettings` dialog (opened from chat header) with rename, description, avatar upload, member add (username input), per-member remove (admin only), leave-group / close-DM. DMs show only "Close chat" (no rename/avatar/members list).
+- **SSR OG wrappers for social unfurls** — `/api/share/c/{u}`, `/api/share/u/{u}`, `/api/share/p/{id}` return fully server-rendered HTML with complete OG/Twitter/canonical tags + meta-refresh redirect. WhatsApp/Slack/LinkedIn/iMessage unfurls now show proper preview cards. Storefront Share button emits this URL.
+- **Fixed** React 18 StrictMode double-dispatch bug on VerifyEmail — single-shot `useRef` guard + `/auth/me` fallback check.
+
+## Testing
+- **179/179 backend pytest passing** (20 new iter8 + 159 prior)
+- Frontend: verify-email flow, resend/close banner, group settings, voice recorder mic button, storefront share URL, SSR wrappers all verified by testing_agent_v3 + manual Playwright.
+
+## Backlog
+- P1: `RESEND_API_KEY` to deliver real verification & password-reset emails (currently logs when APP_ENV != production)
+- P1: Razorpay + Stripe live keys to flip `/api/billing/checkout` from mock to real
+- P1: httpOnly Secure cookie migration for JWT (XSS hardening) — auth playbook trip required
+- P2: Voice recorder fallback for browsers without MediaRecorder (iOS Safari < 14.5)
+- P2: OG image generator (e.g. 1200×630 dynamic PNG with Indian Red brand frame + name/avatar overlay) for richer unfurls
+- P2: Crawl-friendly static sitemap at root `/sitemap.xml` (currently redirects to `/api/sitemap.xml`)
+- P2: Stories reactions + views list (who viewed my story)
 - **Free 30-day trial** on every account: `premium_until = signup + 30d`, `plan = "trial"`. Backfilled for all existing users in `seed.py`.
 - **Trial badge** in sidebar + mobile topbar that links to `/billing`; turns amber within 7 days, rose-red on expiry.
 - **`/billing` page** with single ACTIVE plan (`Skiller Trial Active` ₹299 / 30d), plus locked previews for Quarterly + Yearly. Razorpay/Stripe checkout returns `status=mock` until keys are wired; tokens-checkout (1 token = ₹1) goes live now and extends `premium_until`.
