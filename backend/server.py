@@ -32,6 +32,11 @@ from routers.stories import router as stories_router
 from routers.groups import router as groups_router
 from routers.seo import router as seo_router
 
+
+from routers.subscriptions import router as subscriptions_router
+from routers import wallets
+from routers import withdrawals
+
 logger = logging.getLogger("skiller")
 logging.basicConfig(level=logging.INFO)
 
@@ -55,6 +60,9 @@ app.include_router(wallet_router)
 app.include_router(stories_router)
 app.include_router(groups_router)
 app.include_router(seo_router)
+app.include_router(subscriptions_router)
+app.include_router(wallets.router)
+app.include_router(withdrawals.router)
 
 
 @app.on_event("startup")

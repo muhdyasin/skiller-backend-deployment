@@ -24,6 +24,12 @@ from core import (
     REFERRAL_REWARD_TOKENS, TRIAL_DAYS,
 )
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.dependencies import get_db
+from services.payment_service import PaymentService
+from services.subscription_service import SubscriptionService
+
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 logger = logging.getLogger("skiller")
 
@@ -140,11 +146,20 @@ async def _extend_premium_and_reward(user_id: str, plan: dict, provider: str,
 
 # ---------- public endpoints ----------
 @router.get("/plans")
-async def list_plans():
+async def get_plans(db: AsyncSession = Depends(get_db)):
+    plans = await SubscriptionService.get_active_plans(db)
+
     return {
-        "plans": list(PLANS.values()),
-        "trial_days": TRIAL_DAYS,
-        "referral_reward_tokens": REFERRAL_REWARD_TOKENS,
+        "plans": [
+            {
+                "id": plan.id,
+                "name": plan.name,
+                "user_type": plan.user_type,
+                "price": plan.price,
+                "duration_days": plan.duration_days
+            }
+            for plan in plans
+        ]
     }
 
 
@@ -165,15 +180,28 @@ async def my_subscription(current=Depends(get_current_user)):
 
 
 @router.post("/checkout")
-async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
-    plan = PLANS.get(data.plan_id)
-    if not plan or not plan.get("active"):
-        raise HTTPException(status_code=400, detail="Plan not available yet")
+async def checkout(data: CheckoutIn, current=Depends(get_current_user), pg_db: AsyncSession = Depends(get_db)):
+    plan = await SubscriptionService.get_plan(
+    pg_db,
+    data.plan_id
+    )
+
+    if not plan:
+        raise HTTPException(
+            status_code=404,
+            detail="Plan not found"
+        )
+
+    if not plan.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Plan inactive"
+        )
 
     # ---- Token-funded path (instant) ----
     if data.pay_with == "tokens":
-        await debit_tokens(current["id"], plan["price_inr"], "subscription",
-                           meta={"plan_id": plan["id"]})
+        await debit_tokens(current["id"], plan.price, "subscription",
+                           meta={"plan_id": plan.id})
         new_until = await _extend_premium_and_reward(current["id"], plan, "tokens")
         return {"provider": "tokens", "status": "paid", "new_until": new_until}
 
@@ -182,9 +210,9 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
         if not _rzp_client:
             raise HTTPException(status_code=503,
                                 detail="Razorpay not configured — please contact support")
-        amount_paise = plan["price_inr"] * 100
+        amount_paise = plan.price * 100
         # Receipt must be ≤ 40 chars
-        receipt = f"sk_{plan['id'][:12]}_{current['id'][:18]}"[:40]
+        receipt = f"sk_{plan.id[:12]}_{current['id'][:18]}"[:40]
         try:
             order = _rzp_client.order.create({
                 "amount": amount_paise,
@@ -192,7 +220,7 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
                 "receipt": receipt,
                 "payment_capture": 1,
                 "notes": {
-                    "plan_id": plan["id"],
+                    "plan_id": plan.id,
                     "user_id": current["id"],
                     "user_email": current.get("email", ""),
                 },
@@ -201,15 +229,13 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
             logger.exception("Razorpay order create failed")
             raise HTTPException(status_code=502, detail=f"Razorpay error: {e}")
 
-        await db.subscription_events.insert_one({
-            "user_id": current["id"],
-            "plan_id": plan["id"],
-            "provider": "razorpay",
-            "status": "created",
-            "amount_inr": plan["price_inr"],
-            "order_id": order["id"],
-            "created_at": now_iso(),
-        })
+        await PaymentService.create_razorpay_order_transaction(
+            db=pg_db,
+            payer_id=current["id"],
+            amount=plan.price,
+            plan_id=plan.id,
+            order_id=order["id"]
+        )
 
         return {
             "provider": "razorpay",
@@ -218,24 +244,23 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
             "order_id": order["id"],
             "amount": amount_paise,
             "currency": "INR",
-            "plan_name": plan["name"],
+            "plan_name": plan.name,
             "prefill": {
                 "name": current.get("name", ""),
                 "email": current.get("email", ""),
             },
-            "notes": {"plan_id": plan["id"]},
+            "notes": {"plan_id": plan.id},
         }
 
     # ---- Stripe (still mock until keys arrive) ----
     if data.pay_with == "stripe":
-        await db.subscription_events.insert_one({
-            "user_id": current["id"],
-            "plan_id": plan["id"],
-            "provider": "stripe",
-            "status": "mock",
-            "amount_inr": plan["price_inr"],
-            "created_at": now_iso(),
-        })
+        await PaymentService.create_subscription_transaction(
+            db=pg_db,
+            payer_id=current["id"],
+            plan_id=plan.id,
+            amount=plan.price,
+            payment_provider="stripe"
+        )
         return {
             "provider": "stripe",
             "status": "mock",
@@ -246,46 +271,135 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user)):
 
 
 @router.post("/verify-payment")
-async def verify_payment(data: VerifyIn, current=Depends(get_current_user)):
+async def verify_payment(
+    data: VerifyIn,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
     """Verify Razorpay HMAC signature server-side, then upgrade plan."""
+
     if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(status_code=503, detail="Razorpay not configured")
-
-    # Verify signature: HMAC-SHA256(order_id|payment_id, secret) == signature
-    body = f"{data.razorpay_order_id}|{data.razorpay_payment_id}".encode()
-    expected = hmac.new(
-        RAZORPAY_KEY_SECRET.encode(), body, hashlib.sha256,
-    ).hexdigest()
-    if not hmac.compare_digest(expected, data.razorpay_signature):
-        await db.subscription_events.update_one(
-            {"order_id": data.razorpay_order_id, "user_id": current["id"]},
-            {"$set": {"status": "signature_failed", "verified_at": now_iso()}},
+        raise HTTPException(
+            status_code=503,
+            detail="Razorpay not configured"
         )
-        raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Look up the order in our log to find the plan
-    evt = await db.subscription_events.find_one(
-        {"order_id": data.razorpay_order_id, "user_id": current["id"]},
-        sort=[("created_at", -1)],
+    # Verify signature
+    body = (
+        f"{data.razorpay_order_id}|"
+        f"{data.razorpay_payment_id}"
+    ).encode()
+
+    expected = hmac.new(
+        RAZORPAY_KEY_SECRET.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(
+        expected,
+        data.razorpay_signature
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid signature"
+        )
+
+    # Find payment transaction
+    transaction = (
+        await PaymentService
+        .get_transaction_by_order_id(
+            pg_db,
+            data.razorpay_order_id
+        )
     )
-    if not evt:
-        raise HTTPException(status_code=404, detail="Order not found for this user")
-    if evt.get("status") == "paid":
-        # Already processed — idempotent
-        u = await db.users.find_one({"id": current["id"]}, {"_id": 0, "premium_until": 1})
-        return {"status": "already_paid", "new_until": u.get("premium_until")}
 
-    plan = PLANS.get(evt["plan_id"])
+    if not transaction:
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found"
+        )
+
+    # Idempotency check
+    if transaction.status == "paid":
+
+        u = await db.users.find_one(
+            {"id": current["id"]},
+            {
+                "_id": 0,
+                "premium_until": 1
+            }
+        )
+
+        return {
+            "status": "already_paid",
+            "new_until": u.get("premium_until")
+        }
+
+    # Load plan
+    plan = (
+        await SubscriptionService
+        .get_plan(
+            pg_db,
+            transaction.plan_id
+        )
+    )
+
     if not plan:
-        raise HTTPException(status_code=400, detail="Plan vanished")
+        raise HTTPException(
+            status_code=400,
+            detail="Plan not found"
+        )
+
+    # Load/Create subscription
+    subscription = (
+        await SubscriptionService
+        .get_subscription_by_user(
+            pg_db,
+            current["id"]
+        )
+    )
+
+    if not subscription:
+        subscription = (
+            await SubscriptionService
+            .create_trial_subscription(
+                pg_db,
+                current["id"],
+                current["role"]
+            )
+        )
+
+    # Activate plan in PostgreSQL
+    await SubscriptionService.activate_plan(
+        pg_db,
+        subscription,
+        plan
+    )
+
+    # Mark transaction paid
+    await PaymentService.mark_paid(
+        pg_db,
+        transaction,
+        provider_order_id=data.razorpay_order_id,
+        provider_payment_id=data.razorpay_payment_id
+    )
 
     new_until = await _extend_premium_and_reward(
-        current["id"], plan, "razorpay",
-        payment_id=data.razorpay_payment_id, order_id=data.razorpay_order_id,
+        current["id"],
+        {
+            "id": plan.id,
+            "duration_days": plan.duration_days,
+            "price_inr": plan.price
+        },
+        "razorpay",
+        payment_id=data.razorpay_payment_id,
+        order_id=data.razorpay_order_id,    
     )
+
     return {
         "status": "paid",
         "provider": "razorpay",
         "new_until": new_until,
-        "plan_id": plan["id"],
+        "plan_id": plan.id
     }

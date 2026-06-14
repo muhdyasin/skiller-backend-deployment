@@ -3,6 +3,8 @@ import os
 import uuid
 from core import db, now_iso, hash_password, verify_password
 
+from seed_subscription_plans import seed_subscription_plans
+
 DEMO_AVATARS = [
     "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=400&q=80",
     "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&q=80",
@@ -33,6 +35,9 @@ async def seed():
     await db.posts.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.password_reset_tokens.create_index("token", unique=True)
+
+    await seed_subscription_plans()
+
     # TTL index — Mongo auto-deletes expired tokens. expireAfterSeconds=0
     # uses the value of `expires_at` itself as the deletion timestamp.
     # Drop any pre-existing non-TTL index on expires_at first so we can recreate it.
