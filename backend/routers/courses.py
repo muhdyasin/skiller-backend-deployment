@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.dependencies import get_db
 from services.payment_service import PaymentService
 from services.wallet_service import WalletService
+from services.enrollment_service import EnrollmentService
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 
@@ -106,11 +107,10 @@ async def purchase_course(
         )
 
     # Check existing enrollment
-    existing = await db.enrollments.find_one(
-        {
-            "course_id": course_id,
-            "user_id": current["id"]
-        }
+    existing = await EnrollmentService.get_user_enrollment(
+        pg_db,
+        current["id"],
+        course_id
     )
 
     if existing:
@@ -161,14 +161,13 @@ async def purchase_course(
     )
 
     # Create enrollment (Mongo)
-    await db.enrollments.insert_one({
-        "id": str(uuid.uuid4()),
-        "course_id": course_id,
-        "user_id": current["id"],
-        "amount": price,
-        "payment_transaction_id": transaction.id,
-        "created_at": now_iso(),
-    })
+    await EnrollmentService.create_enrollment(
+        db=pg_db,
+        user_id=current["id"],
+        course_id=course_id,
+        amount_paid=price,
+        payment_transaction_id=transaction.id
+    )
 
     # Increment student count
     await db.courses.update_one(
