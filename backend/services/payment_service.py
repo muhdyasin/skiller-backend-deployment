@@ -92,11 +92,11 @@ class PaymentService:
 
     @staticmethod
     async def create_subscription_transaction(
-    db: AsyncSession,
-    payer_id: str,
-    plan_id:str,
-    amount: int,
-    payment_provider: str
+        db: AsyncSession,
+        payer_id: str,
+        plan_id:str,
+        amount: int,
+        payment_provider: str
     ):
         
         return await PaymentService.create_transaction(
@@ -110,11 +110,11 @@ class PaymentService:
         
     @staticmethod
     async def create_razorpay_order_transaction(
-    db: AsyncSession,
-    payer_id: str,
-    amount: int,
-    plan_id: str,
-    order_id: str
+        db: AsyncSession,
+        payer_id: str,
+        amount: int,
+        plan_id: str,
+        order_id: str
     ):
         transaction = PaymentTransaction(
         payer_id=payer_id,
@@ -132,4 +132,23 @@ class PaymentService:
         await db.refresh(transaction)
 
         return transaction
+    
+    @staticmethod
+    async def create_course_purchase_transaction(
+        db: AsyncSession,
+        payer_id: str,
+        payee_id: str,
+        amount: int,
+        commission_amount: int
+    ):
+        
+        return await PaymentService.create_transaction(
+            db=db,
+            payer_id=payer_id,
+            payee_id=payee_id,
+            amount=amount,
+            commission_amount=commission_amount,
+            transaction_type="course_purchase",
+            payment_provider="manual"
+        )
     

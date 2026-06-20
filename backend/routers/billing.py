@@ -202,7 +202,16 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user), pg_db: A
     if data.pay_with == "tokens":
         await debit_tokens(current["id"], plan.price, "subscription",
                            meta={"plan_id": plan.id})
-        new_until = await _extend_premium_and_reward(current["id"], plan, "tokens")
+        
+        new_until = await _extend_premium_and_reward(
+            current["id"],
+            {
+                "id": plan.id,
+                "duration_days": plan.duration_days,
+                "price_inr": plan.price
+            },
+            "tokens"
+        )
         return {"provider": "tokens", "status": "paid", "new_until": new_until}
 
     # ---- Razorpay (live in test mode) ----
@@ -276,15 +285,13 @@ async def verify_payment(
     current=Depends(get_current_user),
     pg_db: AsyncSession = Depends(get_db)
 ):
-    """Verify Razorpay HMAC signature server-side, then upgrade plan."""
-
     if not RAZORPAY_KEY_SECRET:
         raise HTTPException(
             status_code=503,
             detail="Razorpay not configured"
         )
 
-    # Verify signature
+    # Verify Razorpay signature
     body = (
         f"{data.razorpay_order_id}|"
         f"{data.razorpay_payment_id}"
@@ -305,13 +312,10 @@ async def verify_payment(
             detail="Invalid signature"
         )
 
-    # Find payment transaction
-    transaction = (
-        await PaymentService
-        .get_transaction_by_order_id(
-            pg_db,
-            data.razorpay_order_id
-        )
+    # Find transaction
+    transaction = await PaymentService.get_transaction_by_order_id(
+        pg_db,
+        data.razorpay_order_id
     )
 
     if not transaction:
@@ -320,41 +324,29 @@ async def verify_payment(
             detail="Order not found"
         )
 
-    # Idempotency check
+    # Idempotency
     if transaction.status == "paid":
-
-        u = await db.users.find_one(
-            {"id": current["id"]},
-            {
-                "_id": 0,
-                "premium_until": 1
-            }
-        )
-
         return {
             "status": "already_paid",
-            "new_until": u.get("premium_until")
+            "transaction_id": transaction.id,
+            "plan_id": transaction.plan_id
         }
 
     # Load plan
-    plan = (
-        await SubscriptionService
-        .get_plan(
-            pg_db,
-            transaction.plan_id
-        )
+    plan = await SubscriptionService.get_plan(
+        pg_db,
+        transaction.plan_id
     )
 
     if not plan:
         raise HTTPException(
-            status_code=400,
+            status_code=404,
             detail="Plan not found"
         )
 
     # Load/Create subscription
     subscription = (
-        await SubscriptionService
-        .get_subscription_by_user(
+        await SubscriptionService.get_subscription_by_user(
             pg_db,
             current["id"]
         )
@@ -362,30 +354,32 @@ async def verify_payment(
 
     if not subscription:
         subscription = (
-            await SubscriptionService
-            .create_trial_subscription(
+            await SubscriptionService.create_trial_subscription(
                 pg_db,
                 current["id"],
                 current["role"]
             )
         )
 
-    # Activate plan in PostgreSQL
-    await SubscriptionService.activate_plan(
-        pg_db,
-        subscription,
-        plan
+    # Activate plan
+    subscription = (
+        await SubscriptionService.activate_plan(
+            pg_db,
+            subscription,
+            plan
+        )
     )
 
-    # Mark transaction paid
-    await PaymentService.mark_paid(
+    # Mark payment successful
+    transaction = await PaymentService.mark_paid(
         pg_db,
         transaction,
         provider_order_id=data.razorpay_order_id,
         provider_payment_id=data.razorpay_payment_id
     )
 
-    new_until = await _extend_premium_and_reward(
+    # Keep legacy Mongo premium flow alive during migration
+    await _extend_premium_and_reward(
         current["id"],
         {
             "id": plan.id,
@@ -394,12 +388,15 @@ async def verify_payment(
         },
         "razorpay",
         payment_id=data.razorpay_payment_id,
-        order_id=data.razorpay_order_id,    
+        order_id=data.razorpay_order_id,
     )
 
     return {
         "status": "paid",
         "provider": "razorpay",
-        "new_until": new_until,
-        "plan_id": plan.id
+        "transaction_id": transaction.id,
+        "subscription_id": subscription.id,
+        "plan_id": plan.id,
+        "starts_at": subscription.starts_at,
+        "expires_at": subscription.expires_at
     }

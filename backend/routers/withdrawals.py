@@ -36,7 +36,14 @@ async def request_withdrawal(
             status_code=400,
             detail="Insufficient balance"
         )
-
+    
+    await WalletService.debit_wallet(
+        db,
+        wallet,
+        data.amount,
+        "Withdrawal request"
+    )
+        
     withdrawal = Withdrawal(
         user_id=current["id"],
         amount=data.amount,
