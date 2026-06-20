@@ -143,20 +143,53 @@ async def delete_course(
 
 
 @router.post("/{course_id}/enroll")
-async def enroll_course(course_id: str, current=Depends(get_current_user)):
-    course = await db.courses.find_one({"id": course_id})
+async def enroll_course(
+    course_id: str,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    course = await CourseService.get_course(
+        pg_db,
+        course_id
+    )
+
     if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    existing = await db.enrollments.find_one({"course_id": course_id, "user_id": current["id"]})
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found"
+        )
+
+    existing = await EnrollmentService.get_user_enrollment(
+        pg_db,
+        current["id"],
+        course_id
+    )
+
     if existing:
-        return {"ok": True, "already": True}
-    await db.enrollments.insert_one({
-        "id": str(uuid.uuid4()), "course_id": course_id,
-        "user_id": current["id"], "created_at": now_iso(),
-    })
-    await db.courses.update_one({"id": course_id}, {"$inc": {"students": 1}})
-    await award_xp(current["id"], "course_enroll")
-    return {"ok": True}
+        return {
+            "ok": True,
+            "already": True
+        }
+
+    await EnrollmentService.create_enrollment(
+        db=pg_db,
+        user_id=current["id"],
+        course_id=course_id
+    )
+
+    await CourseService.increment_students(
+        pg_db,
+        course
+    )
+
+    await award_xp(
+        current["id"],
+        "course_enroll"
+    )
+
+    return {
+        "ok": True
+    }
 
 
 @router.post("/{course_id}/purchase")
