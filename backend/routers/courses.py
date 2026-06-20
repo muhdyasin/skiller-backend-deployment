@@ -9,62 +9,137 @@ from db.dependencies import get_db
 from services.payment_service import PaymentService
 from services.wallet_service import WalletService
 from services.enrollment_service import EnrollmentService
+from services.course_service import CourseService
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
 
 
 @router.get("")
-async def list_courses():
-    return await db.courses.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+async def list_courses(pg_db: AsyncSession = Depends(get_db)):
+    courses = await CourseService.list_courses(
+    pg_db
+    )
 
+    return courses
 
 @router.get("/{course_id}")
-async def get_course(course_id: str):
-    c = await db.courses.find_one({"id": course_id}, {"_id": 0})
-    if not c:
-        raise HTTPException(status_code=404, detail="Course not found")
-    return c
+async def get_course(
+    course_id: str,
+    pg_db: AsyncSession = Depends(get_db)
+):
+    course = await CourseService.get_course(
+        pg_db,
+        course_id
+    )
+
+    if not course:
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found"
+        )
+
+    return course
 
 
 @router.post("")
-async def create_course(data: CourseCreate, current=Depends(get_current_user)):
-    course = {
-        "id": str(uuid.uuid4()),
-        "owner_id": current["id"],
-        "instructor": current["name"],
-        "title": data.title, "description": data.description,
-        "price": data.price, "lessons": data.lessons,
-        "thumbnail": data.thumbnail or "https://images.unsplash.com/photo-1519408469771-2586093c3f14?w=1200&q=80",
-        "category": data.category,
-        "rating": 5.0, "students": 0,
-        "created_at": now_iso(),
-    }
-    await db.courses.insert_one(course.copy())
+async def create_course(
+    data: CourseCreate,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    course = await CourseService.create_course(
+        db=pg_db,
+        owner_id=current["id"],
+        instructor=current["name"],
+        title=data.title,
+        description=data.description,
+        price=data.price,
+        lessons=data.lessons,
+        thumbnail=data.thumbnail or "https://images.unsplash.com/photo-1519408469771-2586093c3f14?w=1200&q=80",
+        category=data.category,
+        rating=5.0,
+        students=0
+    )
+
     return course
 
 
 @router.patch("/{course_id}")
-async def update_course(course_id: str, data: CourseUpdate, current=Depends(get_current_user)):
-    course = await db.courses.find_one({"id": course_id})
+async def update_course(
+    course_id: str,
+    data: CourseUpdate,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    course = await CourseService.get_course(
+        pg_db,
+        course_id
+    )
+
     if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    if course.get("owner_id") != current["id"] and current.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    if updates:
-        await db.courses.update_one({"id": course_id}, {"$set": updates})
-    return await db.courses.find_one({"id": course_id}, {"_id": 0})
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found"
+        )
+
+    if (
+        course.owner_id != current["id"]
+        and current.get("role") != "admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden"
+        )
+
+    updates = {
+        k: v
+        for k, v in data.model_dump().items()
+        if v is not None
+    }
+
+    updated_course = await CourseService.update_course(
+        pg_db,
+        course,
+        updates
+    )
+
+    return updated_course
 
 
 @router.delete("/{course_id}")
-async def delete_course(course_id: str, current=Depends(get_current_user)):
-    course = await db.courses.find_one({"id": course_id})
+async def delete_course(
+    course_id: str,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    course = await CourseService.get_course(
+        pg_db,
+        course_id
+    )
+
     if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
-    if course.get("owner_id") != current["id"] and current.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    await db.courses.delete_one({"id": course_id})
-    return {"ok": True}
+        raise HTTPException(
+            status_code=404,
+            detail="Course not found"
+        )
+
+    if (
+        course.owner_id != current["id"]
+        and current.get("role") != "admin"
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Forbidden"
+        )
+
+    await CourseService.delete_course(
+        pg_db,
+        course
+    )
+
+    return {
+        "ok": True
+    }
 
 
 @router.post("/{course_id}/enroll")
@@ -91,8 +166,11 @@ async def purchase_course(
     pg_db: AsyncSession = Depends(get_db)
 ):
     # Find course
-    course = await db.courses.find_one({"id": course_id})
-
+    course = await CourseService.get_course(
+        pg_db,
+        course_id
+    )
+    
     if not course:
         raise HTTPException(
             status_code=404,
@@ -100,7 +178,7 @@ async def purchase_course(
         )
 
     # Prevent buying own course
-    if course["owner_id"] == current["id"]:
+    if course.owner_id == current["id"]:
         raise HTTPException(
             status_code=400,
             detail="Cannot purchase your own course"
@@ -119,7 +197,7 @@ async def purchase_course(
             "already_enrolled": True
         }
 
-    price = int(course.get("price", 0))
+    price = int(course.price)
 
     # Commission (10%)
     commission_amount = int(price * 0.10)
@@ -132,7 +210,7 @@ async def purchase_course(
         await PaymentService.create_course_purchase_transaction(
             db=pg_db,
             payer_id=current["id"],
-            payee_id=course["owner_id"],
+            payee_id=course.owner_id,
             amount=price,
             commission_amount=commission_amount
         )
@@ -142,7 +220,7 @@ async def purchase_course(
     creator_wallet = (
         await WalletService.get_or_create_wallet(
             pg_db,
-            course["owner_id"],
+            course.owner_id,
             "creator"
         )
     )
@@ -151,7 +229,7 @@ async def purchase_course(
         pg_db,
         creator_wallet,
         creator_amount,
-        f"Course purchase: {course['title']}"
+        f"Course purchase: {course.title}"
     )
 
     # Mark transaction paid
@@ -170,9 +248,9 @@ async def purchase_course(
     )
 
     # Increment student count
-    await db.courses.update_one(
-        {"id": course_id},
-        {"$inc": {"students": 1}}
+    await CourseService.increment_students(
+        pg_db,
+        course
     )
 
     await award_xp(
