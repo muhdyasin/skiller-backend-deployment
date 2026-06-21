@@ -104,3 +104,16 @@ class UserService:
         )
 
         return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def get_leaderboard(
+        db: AsyncSession,
+        limit: int = 20
+    ):
+        result = await db.execute(
+            select(User)
+            .order_by(User.xp.desc())
+            .limit(limit)
+        )
+
+        return result.scalars().all()

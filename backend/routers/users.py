@@ -243,14 +243,27 @@ async def my_applications(current=Depends(get_current_user)):
 
 
 @router.get("/leaderboard")
-async def leaderboard(limit: int = 20):
-    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).sort("xp", -1).limit(limit).to_list(limit)
-    return [{
-        "id": u["id"], "username": u["username"], "name": u["name"],
-        "avatar_url": u.get("avatar_url", ""), "xp": u.get("xp", 0),
-        "level": compute_level(u.get("xp", 0)),
-        "badge_count": len(u.get("badges", [])),
-    } for u in users]
+async def leaderboard(
+    limit: int = 20,
+    pg_db: AsyncSession = Depends(get_db)
+):
+    users = await UserService.get_leaderboard(
+        pg_db,
+        limit
+    )
+
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "name": user.name,
+            "avatar_url": user.avatar_url,
+            "xp": user.xp,
+            "level": compute_level(user.xp),
+            "badge_count": len(user.badges or [])
+        }
+        for user in users
+    ]
     
 
 @router.get("/users/{username}")
