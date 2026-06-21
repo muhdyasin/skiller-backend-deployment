@@ -4,11 +4,18 @@ from collections import defaultdict
 from fastapi import APIRouter, Depends
 from core import db, get_current_user, require_creator, compute_level
 
+from db.dependencies import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats")
-async def dashboard_stats(current=Depends(get_current_user)):
+async def dashboard_stats(current=Depends(get_current_user),
+                          pg_db: AsyncSession = Depends(get_db)):
+    
     posts = await db.posts.find({"user_id": current["id"]}, {"_id": 0, "likes": 1, "comments": 1}).to_list(1000)
     total_likes = sum(len(p.get("likes", [])) for p in posts)
     total_comments = sum(len(p.get("comments", [])) for p in posts)
@@ -20,12 +27,14 @@ async def dashboard_stats(current=Depends(get_current_user)):
     ad_impressions = sum(a.get("impressions", 0) for a in ads)
     ad_clicks = sum(a.get("clicks", 0) for a in ads)
     ad_spend = sum(a.get("spend", 0) for a in ads)
-    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "followers": 1, "xp": 1})
+    
+    followers = await UserService.get_followers_count(pg_db,current["id"])
+    
     return {
         "posts": len(posts),
         "likes": total_likes,
         "comments": total_comments,
-        "followers": len(user.get("followers", [])),
+        "followers": followers,
         "courses": courses,
         "enrollments": enrollments,
         "active_ads": len([a for a in ads if a.get("status") == "active"]),
@@ -33,8 +42,8 @@ async def dashboard_stats(current=Depends(get_current_user)):
         "ad_clicks": ad_clicks,
         "ad_spend": ad_spend,
         "ad_ctr": round((ad_clicks / ad_impressions * 100) if ad_impressions else 0, 2),
-        "xp": user.get("xp", 0),
-        "level": compute_level(user.get("xp", 0)),
+        "xp": current.get("xp", 0),
+        "level": compute_level(current.get("xp", 0)),
     }
 
 
@@ -53,7 +62,8 @@ def _daystr(d: datetime) -> str:
 
 
 @router.get("/insights")
-async def insights(current=Depends(require_creator)):
+async def insights(current=Depends(require_creator),
+                   pg_db: AsyncSession = Depends(get_db)):
     """30-day series + top posts + top courses + ad summary."""
     posts = await db.posts.find(
         {"user_id": current["id"]}, {"_id": 0}
@@ -113,8 +123,11 @@ async def insights(current=Depends(require_creator)):
     )
 
     # Follower count snapshot
-    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "followers": 1})
-
+    followers = await UserService.get_followers_count(
+        pg_db,
+        current["id"]
+    )
+    
     return {
         "series": {
             "days": days_iso,
@@ -125,7 +138,7 @@ async def insights(current=Depends(require_creator)):
         "top_posts": top_posts,
         "top_courses": top_courses,
         "ads": ad_summary,
-        "followers": len(user.get("followers", [])),
+        "followers": followers,
         "totals": {
             "posts": len(posts),
             "likes": sum(len(p.get("likes", [])) for p in posts),
@@ -137,7 +150,8 @@ async def insights(current=Depends(require_creator)):
 
 
 @router.get("/crm")
-async def crm(current=Depends(require_creator)):
+async def crm(current=Depends(require_creator),
+              pg_db: AsyncSession = Depends(get_db)):
     """List all gigs with applicants + courses with enrollees, suitable for CRM view."""
     gigs = await db.gigs.find({"owner_id": current["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
     gig_blocks = []
@@ -157,9 +171,9 @@ async def crm(current=Depends(require_creator)):
         # enrich with user details
         enriched = []
         for e in enrolls:
-            u = await db.users.find_one(
-                {"id": e["user_id"]},
-                {"_id": 0, "username": 1, "name": 1, "email": 1, "avatar_url": 1},
+            u = await UserService.get_user_summary(
+                pg_db,
+                e["user_id"]
             )
             enriched.append({**e, "user": u})
         total_enrolls += len(enriched)
