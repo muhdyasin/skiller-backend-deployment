@@ -117,3 +117,17 @@ class UserService:
         )
 
         return result.scalars().all()
+    
+    @staticmethod
+    async def increment_xp(
+        db: AsyncSession,
+        user: User,
+        amount: int
+    ):
+        user.xp += amount
+
+        await db.commit()
+
+        await db.refresh(user)
+
+        return user
