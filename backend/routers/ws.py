@@ -3,6 +3,9 @@ import logging
 import jwt
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 from core import db, ws_manager, JWT_SECRET, JWT_ALG
 
 router = APIRouter()
@@ -15,10 +18,16 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
         user_id = payload["sub"]
-        user = await db.users.find_one({"id": user_id})
-        if not user:
-            await websocket.close(code=4401)
-            return
+        async with AsyncSessionLocal() as pg_db:
+
+            user = await UserService.get_user(
+                pg_db,
+                user_id
+            )
+
+            if not user:
+                await websocket.close(code=4401)
+                return
     except Exception:
         await websocket.close(code=4401)
         return
