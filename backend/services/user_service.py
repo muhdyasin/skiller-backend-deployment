@@ -131,3 +131,48 @@ class UserService:
         await db.refresh(user)
 
         return user
+    
+
+    @staticmethod
+    async def get_user_dict(
+        db: AsyncSession,
+        user_id: str
+    ):
+        result = await db.execute(
+            select(User)
+            .where(User.id == user_id)
+        )
+
+        user = result.scalar_one_or_none()
+
+        if not user:
+            return None
+
+        return {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "name": user.name,
+            "bio": user.bio,
+            "avatar_url": user.avatar_url,
+            "role": user.role,
+            "xp": user.xp,
+            "badges": user.badges or [],
+            "streak": user.streak,
+            "email_verified": user.email_verified,
+            "referral_code": user.referral_code,
+            "referred_by": user.referred_by,
+            "plan": user.plan,
+            "premium_until": (
+                user.premium_until.isoformat()
+                if user.premium_until
+                else None
+            ),
+            "created_at": (
+                user.created_at.isoformat()
+                if user.created_at
+                else None
+            )
+        }
+        
+        

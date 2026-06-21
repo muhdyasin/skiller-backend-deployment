@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, EmailStr, field_validator
 
 from db.session import AsyncSessionLocal
 from models.xp_event import XPEvent
+from services.user_service import UserService
 
 logger = logging.getLogger("skiller")
 logging.basicConfig(level=logging.INFO)
@@ -76,9 +77,14 @@ def create_access_token(user_id: str, email: str) -> str:
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
 
-async def get_user_by_id(user_id: str) -> Optional[dict]:
-    return await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+async def get_user_by_id(user_id: str):
+    
+    async with AsyncSessionLocal() as pg_db:
 
+        return await UserService.get_user_dict(
+            pg_db,
+            user_id
+        )
 
 async def get_current_user(request: Request) -> dict:
     auth = request.headers.get("Authorization", "")

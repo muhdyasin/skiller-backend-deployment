@@ -265,6 +265,12 @@ async def leaderboard(
         for user in users
     ]
     
+@router.get("/users/me")
+async def get_me(
+    current=Depends(get_current_user)
+):
+    return current
+    
 
 @router.get("/users/{username}")
 async def get_profile(
