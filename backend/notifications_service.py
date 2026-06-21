@@ -9,6 +9,9 @@ from typing import Optional
 import resend
 from pywebpush import webpush, WebPushException
 
+from services.user_service import UserService
+from db.session import AsyncSessionLocal
+
 from core import (
     db, ws_manager, now_iso, RESEND_API_KEY, SENDER_EMAIL,
     FRONTEND_URL, VAPID_CLAIMS_EMAIL,
@@ -158,11 +161,22 @@ async def create_notification(
     await db.notifications.insert_one(notif.copy())
 
     actor = None
+
     if actor_id:
-        actor = await db.users.find_one(
-            {"id": actor_id},
-            {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-        )
+        async with AsyncSessionLocal() as pg_db:
+            user = await UserService.get_user(
+                pg_db,
+                actor_id
+            )
+
+            if user:
+                actor = {
+                    "id": user.id,
+                    "username": user.username,
+                    "name": user.name,
+                    "avatar_url": user.avatar_url,
+                }
+                
     payload = {**notif, "actor": actor}
 
     # In-app realtime
