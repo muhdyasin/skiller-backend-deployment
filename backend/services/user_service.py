@@ -207,3 +207,16 @@ class UserService:
             "avatar_url": user.avatar_url,
         }
         
+    @staticmethod
+    async def update_plan(
+        db: AsyncSession,
+        user: User,
+        plan: str,
+        premium_until
+    ):
+        user.plan = plan
+        user.premium_until = premium_until
+
+        await db.commit()
+        return user
+        

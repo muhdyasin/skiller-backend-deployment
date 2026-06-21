@@ -16,6 +16,8 @@ from typing import Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from services.user_service import UserService
+
 import razorpay
 
 from core import (
@@ -25,6 +27,8 @@ from core import (
 )
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from db.session import AsyncSessionLocal
+
 
 from db.dependencies import get_db
 from services.payment_service import PaymentService
@@ -99,33 +103,52 @@ def _parse_until(until) -> Optional[datetime]:
 
 
 async def _extend_premium_and_reward(user_id: str, plan: dict, provider: str,
-                                     payment_id: str = "", order_id: str = "") -> str:
+                                     payment_id: str = "", order_id: str = "",
+                                     pg_db: AsyncSession = Depends(get_db)) -> str:
     """Common post-payment effects: extend premium_until, set plan,
     record subscription_events row, and reward referrer one-shot."""
-    user = await db.users.find_one(
-        {"id": user_id}, {"_id": 0, "premium_until": 1, "referred_by": 1},
-    )
-    base = now()
-    cur_until = _parse_until(user.get("premium_until")) if user else None
-    if cur_until and cur_until > base:
-        base = cur_until
-    new_until = base + timedelta(days=plan["duration_days"])
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"premium_until": new_until.isoformat(), "plan": "pro"}},
-    )
-    await db.subscription_events.insert_one({
-        "user_id": user_id,
-        "plan_id": plan["id"],
-        "provider": provider,
-        "status": "paid",
-        "amount_inr": plan["price_inr"],
-        "payment_id": payment_id,
-        "order_id": order_id,
-        "created_at": now_iso(),
-    })
+    
+    async with AsyncSessionLocal() as pg_db:
 
-    referrer_id = (user or {}).get("referred_by")
+        user = await UserService.get_user(
+            pg_db,
+            user_id
+        )
+
+        base = now()
+
+        cur_until = (
+            _parse_until(user.premium_until)
+            if user
+            else None
+        )
+
+        if cur_until and cur_until > base:
+            base = cur_until
+
+        new_until = (
+            base +
+            timedelta(days=plan["duration_days"])
+        )
+        
+        if new_until.tzinfo is not None:
+            new_until = new_until.replace(
+                tzinfo=None
+            )
+
+        if user:
+            await UserService.update_plan(
+                pg_db,
+                user,
+                "pro",
+                new_until
+            )
+
+        referrer_id = (
+            user.referred_by
+            if user
+            else None
+        )
     if referrer_id:
         rec = await db.referrals.find_one({
             "referrer_id": referrer_id,
@@ -164,17 +187,43 @@ async def get_plans(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me")
-async def my_subscription(current=Depends(get_current_user)):
-    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "premium_until": 1, "plan": 1})
-    until = user.get("premium_until")
+async def my_subscription(
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    until = user.premium_until
+
     days_left = 0
+
     parsed = _parse_until(until)
+
     if parsed:
-        days_left = max(0, (parsed - now()).days)
+        days_left = max(
+            0,
+            (parsed - now()).days
+        )
+
     return {
-        "plan": user.get("plan", "free"),
-        "premium_until": until,
-        "is_premium": is_premium_active(user),
+        "plan": user.plan,
+        "premium_until": (
+            until.isoformat()
+            if until
+            else None
+        ),
+        "is_premium": (
+        bool(parsed and parsed > now())
+        ),
         "days_left": days_left,
     }
 
