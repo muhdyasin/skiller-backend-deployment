@@ -10,16 +10,34 @@ from core import (
 )
 from notifications_service import create_notification
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/posts", tags=["posts"])
 
 
 async def enrich_post(p: dict, viewer_id: Optional[str]) -> dict:
-    author = await db.users.find_one(
-        {"id": p["user_id"]},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1, "xp": 1},
-    )
-    if author:
-        author["level"] = compute_level(author.get("xp", 0))
+    author = None
+
+    async with AsyncSessionLocal() as pg_db:
+
+        user = await UserService.get_user(
+            pg_db,
+            p["user_id"]
+        )
+
+        if user:
+            author = {
+                "id": user.id,
+                "username": user.username,
+                "name": user.name,
+                "avatar_url": user.avatar_url,
+                "xp": user.xp,
+            }
+
+            author["level"] = compute_level(
+                user.xp or 0
+            )
     p["author"] = author
     p["like_count"] = len(p.get("likes", []))
     p["comment_count"] = len(p.get("comments", []))
