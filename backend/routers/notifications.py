@@ -2,16 +2,32 @@
 from fastapi import APIRouter, Depends
 from core import db, get_current_user
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
 async def enrich(n: dict) -> dict:
     if n.get("actor_id"):
-        actor = await db.users.find_one(
-            {"id": n["actor_id"]},
-            {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-        )
-        n["actor"] = actor
+
+        async with AsyncSessionLocal() as pg_db:
+
+            user = await UserService.get_user(
+                pg_db,
+                n["actor_id"]
+            )
+
+            if user:
+                n["actor"] = {
+                    "id": user.id,
+                    "username": user.username,
+                    "name": user.name,
+                    "avatar_url": user.avatar_url,
+                }
+            else:
+                n["actor"] = None
+
     return n
 
 
