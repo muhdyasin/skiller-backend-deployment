@@ -6,26 +6,14 @@ from core import (
 )
 from notifications_service import create_notification
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.dependencies import get_db
+from services.user_service import UserService
+from services.user_follow_service import UserFollowService
+
 router = APIRouter(prefix="/api", tags=["users"])
 
-
-@router.get("/users/{username}")
-async def get_user_profile(username: str, request: Request):
-    user = await db.users.find_one({"username": username.lower()}, {"_id": 0, "password_hash": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    posts = await db.posts.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    viewer = await maybe_current_user(request)
-    is_following = bool(viewer and viewer["id"] in user.get("followers", []))
-    return {
-        "user": user, "posts": posts, "post_count": len(posts),
-        "follower_count": len(user.get("followers", [])),
-        "following_count": len(user.get("following", [])),
-        "is_following": is_following,
-        "is_self": bool(viewer and viewer["id"] == user["id"]),
-        "level": compute_level(user.get("xp", 0)),
-        "badges": [b for b in BADGE_DEFS if b["key"] in user.get("badges", [])],
-    }
 
 
 @router.get("/c/{username}")
@@ -87,31 +75,112 @@ async def creator_storefront(username: str, request: Request):
 
 
 @router.post("/users/{user_id}/follow")
-async def follow_user(user_id: str, current=Depends(get_current_user)):
+async def follow_user(
+    user_id: str,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
     if user_id == current["id"]:
-        raise HTTPException(status_code=400, detail="Cannot follow yourself")
-    target = await db.users.find_one({"id": user_id})
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found")
-    is_following = current["id"] in target.get("followers", [])
-    if is_following:
-        await db.users.update_one({"id": user_id}, {"$pull": {"followers": current["id"]}})
-        await db.users.update_one({"id": current["id"]}, {"$pull": {"following": user_id}})
-        return {"following": False}
-    await db.users.update_one({"id": user_id}, {"$addToSet": {"followers": current["id"]}})
-    await db.users.update_one({"id": current["id"]}, {"$addToSet": {"following": user_id}})
-    await award_xp(current["id"], "follow_given")
-    await award_xp(user_id, "follow_received")
-    await create_notification(user_id, "follow", f"@{current['username']} started following you", actor_id=current["id"])
-    return {"following": True}
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot follow yourself"
+        )
 
+    target = await UserService.get_user(
+        pg_db,
+        user_id
+    )
+
+    if not target:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    existing_follow = (
+        await UserFollowService.get_follow(
+            pg_db,
+            current["id"],
+            user_id
+        )
+    )
+
+    # Unfollow
+    if existing_follow:
+
+        await UserFollowService.delete_follow(
+            pg_db,
+            existing_follow
+        )
+
+        return {
+            "following": False
+        }
+
+    # Follow
+    await UserFollowService.create_follow(
+        pg_db,
+        current["id"],
+        user_id
+    )
+
+    await award_xp(
+        current["id"],
+        "follow_given"
+    )
+
+    await award_xp(
+        user_id,
+        "follow_received"
+    )
+
+    await create_notification(
+        user_id,
+        "follow",
+        f"@{current['username']} started following you",
+        actor_id=current["id"]
+    )
+
+    return {
+        "following": True
+    }
 
 @router.patch("/users/me")
-async def update_profile(data: ProfileUpdate, current=Depends(get_current_user)):
-    updates = {k: v for k, v in data.model_dump().items() if v is not None}
-    if updates:
-        await db.users.update_one({"id": current["id"]}, {"$set": updates})
-    return await get_user_by_id(current["id"])
+async def update_profile(
+    data: ProfileUpdate,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    updates = {
+        k: v
+        for k, v in data.model_dump().items()
+        if v is not None
+    }
+
+    user = await UserService.update_user(
+        pg_db,
+        user,
+        updates
+    )
+
+    return {
+        "id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "bio": user.bio,
+        "avatar_url": user.avatar_url
+    }
 
 
 @router.post("/users/me/upgrade-role")
@@ -122,10 +191,23 @@ async def upgrade_role(data: RoleUpgradeIn, current=Depends(get_current_user)):
     return await get_user_by_id(current["id"])
 
 
-@router.get("/users")
-async def list_users(limit: int = 20):
-    return await db.users.find({}, {"_id": 0, "password_hash": 0}).limit(limit).to_list(limit)
+@router.get("")
+async def list_users(pg_db: AsyncSession = Depends(get_db)):
+    users = await UserService.get_all_users(
+        pg_db
+    )
 
+    return [
+        {
+            "id": user.id,
+            "username": user.username,
+            "name": user.name,
+            "avatar_url": user.avatar_url,
+            "role": user.role,
+            "xp": user.xp
+        }
+        for user in users
+    ]
 
 @router.get("/users/me/xp")
 async def my_xp(current=Depends(get_current_user)):
@@ -169,3 +251,33 @@ async def leaderboard(limit: int = 20):
         "level": compute_level(u.get("xp", 0)),
         "badge_count": len(u.get("badges", [])),
     } for u in users]
+    
+
+@router.get("/users/{username}")
+async def get_profile(
+    username: str,
+    pg_db: AsyncSession = Depends(get_db)
+):
+    user = await UserService.get_user_by_username(
+        pg_db,
+        username
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    return {
+        "id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "bio": user.bio,
+        "avatar_url": user.avatar_url,
+        "role": user.role,
+        "xp": user.xp,
+        "badges": user.badges,
+        "streak": user.streak,
+        "created_at": user.created_at
+    }
