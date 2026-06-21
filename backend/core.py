@@ -21,6 +21,9 @@ from fastapi import HTTPException, Request, WebSocket
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, field_validator
 
+from db.session import AsyncSessionLocal
+from models.xp_event import XPEvent
+
 logger = logging.getLogger("skiller")
 logging.basicConfig(level=logging.INFO)
 
@@ -179,7 +182,26 @@ async def award_xp(user_id: str, reason: str, amount: Optional[int] = None, meta
         "amount": amount,
         "meta": meta or {},
         "created_at": now_iso(),
-    })
+        })
+
+    try:
+        async with AsyncSessionLocal() as pg_db:
+
+            pg_db.add(
+                XPEvent(
+                    user_id=user_id,
+                    reason=reason,
+                    amount=amount,
+                    meta=meta or {}
+                )
+            )
+
+            await pg_db.commit()
+
+    except Exception as e:
+        logger.error(
+            f"Postgres XP write failed: {e}"
+        )
     await check_badges(user_id)
 
 
