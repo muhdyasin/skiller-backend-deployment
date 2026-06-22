@@ -11,6 +11,9 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query
 from core import db, compute_level
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
@@ -68,12 +71,34 @@ async def search(q: str = Query(..., min_length=1), limit: int = 8):
         u["level"] = compute_level(u.get("xp", 0))
 
     # attach minimal author for each post (sequential but small N)
-    for p in posts:
-        a = await db.users.find_one(
-            {"id": p["user_id"]},
-            {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
+    user_ids = list(
+    {
+        p["user_id"]
+        for p in posts
+    }
+    )
+
+    async with AsyncSessionLocal() as pg_db:
+
+        users = await UserService.get_users_by_ids(
+            pg_db,
+            user_ids
         )
-        p["author"] = a
+
+    user_map = {
+        u.id: {
+            "id": u.id,
+            "username": u.username,
+            "name": u.name,
+            "avatar_url": u.avatar_url,
+        }
+        for u in users
+    }
+
+    for p in posts:
+        p["author"] = user_map.get(
+            p["user_id"]
+        )
 
     return {
         "q": q,
