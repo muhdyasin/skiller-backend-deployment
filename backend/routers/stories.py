@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from core import db, now, now_iso, get_current_user
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/stories", tags=["stories"])
 
 STORY_TTL_HOURS = 24
@@ -57,8 +60,32 @@ async def create_story(data: StoryCreate, current=Depends(get_current_user)):
 @router.get("/feed")
 async def stories_feed(current=Depends(get_current_user)):
     """Returns stories from people I follow + my own, grouped by user."""
-    me = await db.users.find_one({"id": current["id"]}, {"_id": 0, "following": 1})
-    user_ids = list(set((me.get("following") or []) + [current["id"]]))
+    
+    async with AsyncSessionLocal() as pg_db:
+
+        user = await UserService.get_user(
+            pg_db,
+            current["id"]
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
+
+        following_ids = await UserService.get_following_ids(
+            pg_db,
+            current["id"]
+        )
+
+    user_ids = list(
+        set(
+            following_ids +
+            [current["id"]]
+        )
+    )
+    
     cursor = db.stories.find(
         {"user_id": {"$in": user_ids}, "expires_at_dt": {"$gt": now()}},
         {"_id": 0},
@@ -67,11 +94,24 @@ async def stories_feed(current=Depends(get_current_user)):
 
     # Group by user
     by_user = {}
-    user_meta = await db.users.find(
-        {"id": {"$in": user_ids}},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-    ).to_list(len(user_ids) or 1)
-    meta_by_id = {u["id"]: u for u in user_meta}
+    
+    async with AsyncSessionLocal() as pg_db:
+
+        users = await UserService.get_users_by_ids(
+            pg_db,
+            user_ids
+        )
+
+    meta_by_id = {
+        u.id: {
+            "id": u.id,
+            "username": u.username,
+            "name": u.name,
+            "avatar_url": u.avatar_url,
+        }
+        for u in users
+    }
+    
 
     for s in raw:
         if s["user_id"] not in by_user:
@@ -99,10 +139,27 @@ async def stories_feed(current=Depends(get_current_user)):
 
 @router.get("/u/{username}")
 async def user_stories(username: str, current=Depends(get_current_user)):
-    user = await db.users.find_one(
-        {"username": username.lower()},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-    )
+    
+    async with AsyncSessionLocal() as pg_db:
+
+        user_obj = await UserService.get_user_by_username(
+            pg_db,
+            username.lower()
+        )
+
+    if not user_obj:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    user = {
+        "id": user_obj.id,
+        "username": user_obj.username,
+        "name": user_obj.name,
+        "avatar_url": user_obj.avatar_url,
+    }
+    
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     cursor = db.stories.find(

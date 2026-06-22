@@ -9,6 +9,7 @@ from sqlalchemy import select
 from models.user import User
 
 
+
 class UserService:
 
     @staticmethod
@@ -249,3 +250,19 @@ class UserService:
         )
 
         return result.scalars().all()
+
+
+
+    @staticmethod
+    async def get_following_ids(
+        db,
+        follower_id: str
+    ):
+        result = await db.execute(
+            select(UserFollow.following_id)
+            .where(
+                UserFollow.follower_id == follower_id
+            )
+        )
+
+        return list(result.scalars().all())
