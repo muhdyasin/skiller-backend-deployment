@@ -4,14 +4,20 @@
 (e.g. WhatsApp, Slack, LinkedIn unfurlers, custom share-preview tools) can
 fetch a stable, server-rendered description without executing JS.
 """
-import os
+
 from datetime import datetime, timezone
 from xml.sax.saxutils import escape
 
-from fastapi import APIRouter, HTTPException, Response
-from fastapi.responses import HTMLResponse, PlainTextResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import HTMLResponse
 
 from core import db, FRONTEND_URL
+
+from db.dependencies import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 
 router = APIRouter(prefix="/api", tags=["seo"])
 
@@ -32,9 +38,16 @@ async def sitemap():
         ("/gigs", "0.9", "daily"),
         ("/leaderboard", "0.7", "weekly"),
     ]
-    creators = await db.users.find(
-        {"role": {"$in": ["creator", "admin"]}}, {"_id": 0, "username": 1},
-    ).limit(2000).to_list(2000)
+    async with AsyncSessionLocal() as pg_db:
+        creator_rows = await UserService.get_creators(
+            pg_db,
+            2000
+        )
+
+    creators = [
+        {"username": u.username}
+        for u in creator_rows
+    ]
 
     parts = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
@@ -56,20 +69,38 @@ async def sitemap():
 @router.get("/og/c/{username}")
 async def og_creator(username: str):
     """Crawler-friendly metadata for a creator's storefront."""
-    user = await db.users.find_one(
-        {"username": username.lower()},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "bio": 1, "avatar_url": 1, "role": 1},
-    )
-    if not user:
-        raise HTTPException(status_code=404, detail="Creator not found")
+    async with AsyncSessionLocal() as pg_db:
+
+        user_obj = await UserService.get_user_by_username(
+            pg_db,
+            username.lower()
+        )
+
+        if not user_obj:
+            raise HTTPException(
+                status_code=404,
+                detail="Creator not found"
+            )
+
+        followers = await UserService.follower_count(
+            pg_db,
+            user_obj.id
+        )
+        
+    user = {
+    "id": user_obj.id,
+    "username": user_obj.username,
+    "name": user_obj.name,
+    "bio": user_obj.bio,
+    "avatar_url": user_obj.avatar_url,
+    "role": user_obj.role,
+    }
+    
     if user.get("role") not in ("creator", "admin"):
         raise HTTPException(status_code=404, detail="Not a creator")
 
     courses_count = await db.courses.count_documents({"owner_id": user["id"]})
     gigs_count = await db.gigs.count_documents({"owner_id": user["id"]})
-    fully = await db.users.find_one({"id": user["id"]}, {"_id": 0, "followers": 1})
-    followers = len((fully or {}).get("followers", []))
-
     title = f"{user['name']} (@{user['username']}) — Skiller"
     desc = (
         f"{user.get('bio') or 'Creator on Skiller'} · "
@@ -142,15 +173,35 @@ def _og_html(title: str, description: str, image: str, url: str,
 
 @router.get("/share/c/{username}", response_class=HTMLResponse)
 async def share_creator(username: str):
-    user = await db.users.find_one(
-        {"username": username.lower()},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "bio": 1, "avatar_url": 1, "role": 1, "followers": 1},
-    )
-    if not user:
-        raise HTTPException(status_code=404, detail="Creator not found")
+    async with AsyncSessionLocal() as pg_db:
+
+        user_obj = await UserService.get_user_by_username(
+            pg_db,
+            username.lower()
+        )
+
+        if not user_obj:
+            raise HTTPException(
+                status_code=404,
+                detail="Creator not found"
+            )
+
+        followers = await UserService.follower_count(
+            pg_db,
+            user_obj.id
+        )
+        
+    user = {
+    "id": user_obj.id,
+    "username": user_obj.username,
+    "name": user_obj.name,
+    "bio": user_obj.bio,
+    "avatar_url": user_obj.avatar_url,
+    "role": user_obj.role,
+    }
+    
     courses_count = await db.courses.count_documents({"owner_id": user["id"]})
     gigs_count = await db.gigs.count_documents({"owner_id": user["id"]})
-    followers = len(user.get("followers", []))
     title = f"{user['name']} (@{user['username']}) — Skiller"
     desc = (
         f"{user.get('bio') or 'Creator on Skiller'} · "
@@ -163,14 +214,21 @@ async def share_creator(username: str):
 
 
 @router.get("/share/p/{post_id}", response_class=HTMLResponse)
-async def share_post(post_id: str):
+async def share_post(post_id: str,pg_db: AsyncSession = Depends(get_db)):
     post = await db.posts.find_one({"id": post_id}, {"_id": 0})
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
-    author = await db.users.find_one(
-        {"id": post["user_id"]},
-        {"_id": 0, "username": 1, "name": 1, "avatar_url": 1},
-    ) or {}
+    author_obj = await UserService.get_user(
+        pg_db,
+        post["user_id"]
+    )
+    
+    author = {
+    "username": author_obj.username,
+    "name": author_obj.name,
+    "avatar_url": author_obj.avatar_url,
+    }
+    
     caption = post.get("caption") or f"Post by @{author.get('username', 'creator')}"
     title = f"{caption[:70]}"
     desc = f"On Skiller · @{author.get('username', 'creator')} · {len(post.get('likes', []))} likes · {len(post.get('comments', []))} comments"
@@ -186,15 +244,33 @@ async def share_post(post_id: str):
 
 
 @router.get("/share/u/{username}", response_class=HTMLResponse)
-async def share_user(username: str):
-    user = await db.users.find_one(
-        {"username": username.lower()},
-        {"_id": 0, "username": 1, "name": 1, "bio": 1, "avatar_url": 1, "followers": 1},
+async def share_user(username: str,pg_db: AsyncSession = Depends(get_db)):
+    user_obj = await UserService.get_user_by_username(
+        pg_db,
+        username.lower()
     )
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not user_obj:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+        
+    user = {
+    "id": user_obj.id,
+    "username": user_obj.username,
+    "name": user_obj.name,
+    "bio": user_obj.bio,
+    "avatar_url": user_obj.avatar_url,
+    "role": user_obj.role,
+    }
+    
+    followers = await UserService.follower_count(
+    pg_db,
+    user_obj.id
+    )
     title = f"{user['name']} (@{user['username']}) — Skiller"
-    desc = user.get("bio") or f"{len(user.get('followers', []))} followers on Skiller"
+    desc = user_obj.bio or f"{followers} followers on Skiller"    
     image = user.get("avatar_url") or "https://images.unsplash.com/photo-1648111320024-3a08e28d20ff?w=1200&q=80"
     canonical = f"{_site_root()}/u/{user['username']}"
     return HTMLResponse(_og_html(title, desc, image, canonical, og_type="profile",

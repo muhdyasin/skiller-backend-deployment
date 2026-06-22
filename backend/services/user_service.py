@@ -266,3 +266,27 @@ class UserService:
         )
 
         return list(result.scalars().all())
+    
+    @staticmethod
+    async def get_creators(db, limit: int = 2000):
+        result = await db.execute(
+            select(User)
+            .where(User.role.in_(["creator", "admin"]))
+            .limit(limit)
+        )
+        return result.scalars().all()
+    
+    @staticmethod
+    async def follower_count(
+        db,
+        user_id: str
+    ):
+        result = await db.execute(
+            select(func.count())
+            .select_from(UserFollow)
+            .where(
+                UserFollow.following_id == user_id
+            )
+        )
+
+        return result.scalar() or 0
