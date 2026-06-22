@@ -5,6 +5,9 @@ from models.user import User
 from sqlalchemy import func
 from models.user_follow import UserFollow
 
+from sqlalchemy import select
+from models.user import User
+
 
 class UserService:
 
@@ -219,4 +222,18 @@ class UserService:
 
         await db.commit()
         return user
+    
+    @staticmethod
+    async def list_creators(
+        db,
+        exclude_user_id: str,
+        limit: int = 20
+    ):
+        result = await db.execute(
+            select(User)
+            .where(User.id != exclude_user_id)
+            .limit(limit)
+        )
+
+        return result.scalars().all()
         

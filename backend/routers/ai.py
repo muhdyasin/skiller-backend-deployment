@@ -7,6 +7,9 @@ from core import db, get_current_user, EMERGENT_LLM_KEY
 # New: OpenAI async client
 from openai import AsyncOpenAI
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 logger = logging.getLogger("skiller")
@@ -19,9 +22,18 @@ async def ai_recommend(current=Depends(get_current_user)):
         # Here we choose to fallback to non-AI recommendations.
         logger.warning("EMERGENT_LLM_KEY not set, using fallback recommendations")
 
-    user = await db.users.find_one({"id": current["id"]})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    async with AsyncSessionLocal() as pg_db:
+
+        user = await UserService.get_user(
+            pg_db,
+            current["id"]
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="User not found"
+            )
 
     user_posts = (
         await db.posts.find(
@@ -45,20 +57,29 @@ async def ai_recommend(current=Depends(get_current_user)):
         )
         .to_list(50)
     )
-    creators = (
-        await db.users.find(
-            {"id": {"$ne": current["id"]}},
-            {"_id": 0, "username": 1, "name": 1, "bio": 1},
+    async with AsyncSessionLocal() as pg_db:
+
+        creator_rows = await UserService.list_creators(
+            pg_db,
+            current["id"],
+            20
         )
-        .limit(20)
-        .to_list(20)
-    )
+
+    creators = [
+        {
+            "username": u.username,
+            "name": u.name,
+            "bio": u.bio or ""
+        }
+        for u in creator_rows
+    ]
 
     user_summary = (
-        f"Name: {user['name']}\n"
-        f"Bio: {user.get('bio', '')}\n"
-        f"Recent posts: {json.dumps(user_posts)}"
+    f"Name: {user.name}\n"
+    f"Bio: {user.bio or ''}\n"
+    f"Recent posts: {json.dumps(user_posts)}"
     )
+    
     catalog = {"courses": courses[:20], "gigs": gigs[:20], "creators": creators[:15]}
 
     system = (
