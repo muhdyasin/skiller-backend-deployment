@@ -237,3 +237,15 @@ class UserService:
 
         return result.scalars().all()
         
+        
+    @staticmethod
+    async def get_users_by_ids(
+        db,
+        user_ids: list[str]
+    ):
+        result = await db.execute(
+            select(User)
+            .where(User.id.in_(user_ids))
+        )
+
+        return result.scalars().all()

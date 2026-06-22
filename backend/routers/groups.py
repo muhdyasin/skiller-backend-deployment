@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field, field_validator
 
 from core import db, now_iso, get_current_user, ws_manager
 
+from db.session import AsyncSessionLocal
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/community", tags=["community"])
 
 
@@ -64,11 +67,23 @@ async def _broadcast_to_group(group: dict, payload: dict, exclude_user: Optional
 
 
 async def _user_summary(user_ids: List[str]) -> dict:
-    docs = await db.users.find(
-        {"id": {"$in": user_ids}},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-    ).to_list(len(user_ids) or 1)
-    return {u["id"]: u for u in docs}
+
+    async with AsyncSessionLocal() as pg_db:
+
+        users = await UserService.get_users_by_ids(
+            pg_db,
+            user_ids
+        )
+
+    return {
+        u.id: {
+            "id": u.id,
+            "username": u.username,
+            "name": u.name,
+            "avatar_url": u.avatar_url,
+        }
+        for u in users
+    }
 
 
 # ---------- Group CRUD ----------
@@ -76,9 +91,15 @@ async def _user_summary(user_ids: List[str]) -> dict:
 async def create_group(data: GroupCreate, current=Depends(get_current_user)):
     member_ids = {current["id"]}
     for un in data.member_usernames:
-        u = await db.users.find_one({"username": un.lower()}, {"_id": 0, "id": 1})
+        async with AsyncSessionLocal() as pg_db:
+
+            u = await UserService.get_user_by_username(
+                pg_db,
+                un.lower()
+            )
+
         if u:
-            member_ids.add(u["id"])
+            member_ids.add(u.id)
 
     if data.is_dm:
         if len(member_ids) != 2:
@@ -145,11 +166,21 @@ async def add_member(group_id: str, body: dict, current=Depends(get_current_user
     username = (body.get("username") or "").lower().strip()
     if not username:
         raise HTTPException(status_code=400, detail="username required")
-    u = await db.users.find_one({"username": username}, {"_id": 0, "id": 1})
+    
+    async with AsyncSessionLocal() as pg_db:
+
+        u = await UserService.get_user_by_username(
+            pg_db,
+            username
+        )
+
     if not u:
-        raise HTTPException(status_code=404, detail="User not found")
-    await db.groups.update_one({"id": group_id}, {"$addToSet": {"members": u["id"]}})
-    return {"ok": True, "added": u["id"]}
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+    await db.groups.update_one({"id": group_id}, {"$addToSet": {"members": u.id}})
+    return {"ok": True, "added": u.id}
 
 
 @router.delete("/groups/{group_id}/members/{user_id}")
@@ -216,10 +247,23 @@ async def send_message(group_id: str, data: MessageCreate, current=Depends(get_c
         {"$set": {"last_message_at": msg["created_at"], "last_message_preview": preview[:80]}},
     )
 
-    sender = await db.users.find_one(
-        {"id": current["id"]},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-    )
+    async with AsyncSessionLocal() as pg_db:
+
+        sender_user = await UserService.get_user(
+            pg_db,
+            current["id"]
+        )
+
+    sender = None
+
+    if sender_user:
+        sender = {
+            "id": sender_user.id,
+            "username": sender_user.username,
+            "name": sender_user.name,
+            "avatar_url": sender_user.avatar_url,
+        }
+        
     payload = {"type": "group_message", "data": {**msg, "sender": sender}}
     await _broadcast_to_group(g, payload, exclude_user=None)
     return payload["data"]
