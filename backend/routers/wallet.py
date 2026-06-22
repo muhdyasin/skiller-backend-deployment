@@ -9,6 +9,11 @@ from core import (
     debit_tokens, REFERRAL_REWARD_TOKENS,
 )
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.dependencies import get_db
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/wallet", tags=["wallet"])
 
 
@@ -19,16 +24,17 @@ class RedeemIn(BaseModel):
 
 
 @router.get("/me")
-async def my_wallet(current=Depends(get_current_user)):
+async def my_wallet(current=Depends(get_current_user),
+                    pg_db: AsyncSession = Depends(get_db)):
     await ensure_token_wallet(current["id"])
     wallet = await db.token_wallets.find_one({"user_id": current["id"]}, {"_id": 0})
     ledger = await db.token_ledger.find(
         {"user_id": current["id"]}, {"_id": 0},
     ).sort("created_at", -1).limit(30).to_list(30)
 
-    user = await db.users.find_one(
-        {"id": current["id"]},
-        {"_id": 0, "referral_code": 1},
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
     )
     referrals = await db.referrals.find(
         {"referrer_id": current["id"]}, {"_id": 0},
@@ -38,18 +44,27 @@ async def my_wallet(current=Depends(get_current_user)):
 
     # enrich referrals with referee usernames
     referee_ids = [r["referred_user_id"] for r in referrals]
-    referees = await db.users.find(
-        {"id": {"$in": referee_ids}},
-        {"_id": 0, "id": 1, "username": 1, "name": 1, "avatar_url": 1},
-    ).to_list(len(referee_ids) or 1)
-    by_id = {u["id"]: u for u in referees}
+    users = await UserService.get_users_by_ids(
+        pg_db,
+        referee_ids
+    )
+    by_id = {
+        u.id: {
+            "id": u.id,
+            "username": u.username,
+            "name": u.name,
+            "avatar_url": u.avatar_url,
+        }
+        for u in users
+    }
+    
     for r in referrals:
         r["referred"] = by_id.get(r["referred_user_id"])
 
     return {
         "wallet": wallet or {"balance": 0, "lifetime_earned": 0, "lifetime_spent": 0},
         "ledger": ledger,
-        "referral_code": user.get("referral_code", ""),
+        "referral_code": user.referral_code,
         "reward_per_referral": REFERRAL_REWARD_TOKENS,
         "referrals": referrals,
         "stats": {
@@ -98,17 +113,18 @@ async def redeem(data: RedeemIn, current=Depends(get_current_user)):
         return {"balance": balance, "purpose": "ads", "credit": data.amount}
 
     if data.purpose == "ai_credits":
-        # 1 token = 1 AI credit
-        await db.users.update_one(
-            {"id": current["id"]}, {"$inc": {"ai_credits": data.amount}},
+        raise HTTPException(
+            status_code=501,
+            detail="AI credits feature not implemented"
         )
-        balance = await debit_tokens(current["id"], data.amount, "ai_credits", meta={})
-        return {"balance": balance, "purpose": "ai_credits", "credit": data.amount}
-
     raise HTTPException(status_code=400, detail="Unknown purpose")
 
 
 @router.get("/referral-link")
-async def referral_link(current=Depends(get_current_user)):
-    user = await db.users.find_one({"id": current["id"]}, {"_id": 0, "referral_code": 1})
-    return {"code": user.get("referral_code", "")}
+async def referral_link(current=Depends(get_current_user),
+                        pg_db: AsyncSession = Depends(get_db)):
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
+    )    
+    return {"code": user.referral_code}

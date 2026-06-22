@@ -17,53 +17,75 @@ router = APIRouter(prefix="/api", tags=["users"])
 
 
 @router.get("/c/{username}")
-async def creator_storefront(username: str, request: Request):
+async def creator_storefront(username: str, request: Request,pg_db: AsyncSession = Depends(get_db)):
     """Public, SEO-friendly creator storefront — courses + gigs + reels +
     latest posts in one payload. Open to anonymous visitors."""
-    user = await db.users.find_one(
-        {"username": username.lower()},
-        {"_id": 0, "password_hash": 0},
+    user = await UserService.get_user_by_username(
+    pg_db,
+    username.lower()
     )
+
     if not user:
-        raise HTTPException(status_code=404, detail="Creator not found")
-    if user.get("role") not in ("creator", "admin"):
+        raise HTTPException(
+            status_code=404,
+            detail="Creator not found"
+        )
+        
+    if user.role not in ("creator", "admin"):
         raise HTTPException(status_code=404, detail="Not a creator")
 
     courses = await db.courses.find(
-        {"owner_id": user["id"]}, {"_id": 0},
+        {"owner_id": user.id},{"_id": 0},
     ).sort("created_at", -1).to_list(50)
     for c in courses:
         c["enrollments"] = await db.enrollments.count_documents({"course_id": c["id"]})
 
     gigs = await db.gigs.find(
-        {"owner_id": user["id"]}, {"_id": 0},
+        {"owner_id": user.id}, {"_id": 0},
     ).sort("created_at", -1).to_list(50)
 
     reels = await db.posts.find(
-        {"user_id": user["id"], "media_type": "video"}, {"_id": 0},
+        {"user_id": user.id, "media_type": "video"}, {"_id": 0},
     ).sort("created_at", -1).to_list(12)
     posts = await db.posts.find(
-        {"user_id": user["id"], "media_type": {"$ne": "video"}}, {"_id": 0},
+        {"user_id": user.id, "media_type": {"$ne": "video"}}, {"_id": 0},
     ).sort("created_at", -1).to_list(12)
+    
+    followers = await UserFollowService.count_followers(
+        pg_db,
+        user.id
+    )
+
+    following = await UserFollowService.count_following(
+        pg_db,
+        user.id
+    )
 
     viewer = await maybe_current_user(request)
-    is_following = bool(viewer and viewer["id"] in user.get("followers", []))
+    is_following = False
+    
+    if viewer:
+        is_following = await UserFollowService.is_following(
+            pg_db,
+            viewer["id"],
+            user.id
+        )
 
     return {
         "user": {
-            "id": user["id"], "username": user["username"], "name": user["name"],
-            "bio": user.get("bio", ""), "avatar_url": user.get("avatar_url", ""),
-            "role": user.get("role"),
+            "id": user.id, "username": user.username, "name": user.name,
+            "bio": user.bio, "avatar_url": user.avatar_url,
+            "role": user.role,
         },
         "stats": {
-            "followers": len(user.get("followers", [])),
-            "following": len(user.get("following", [])),
+            "followers": followers,
+            "following": following,
             "courses": len(courses),
             "gigs": len(gigs),
             "posts": len(posts) + len(reels),
         },
-        "level": compute_level(user.get("xp", 0)),
-        "badges": [b for b in BADGE_DEFS if b["key"] in user.get("badges", [])],
+        "level": compute_level(user.xp or 0),
+        "badges": [b for b in BADGE_DEFS if b["key"] in user.badges or []],
         "courses": courses,
         "gigs": gigs,
         "reels": reels,
@@ -181,14 +203,35 @@ async def update_profile(
         "bio": user.bio,
         "avatar_url": user.avatar_url
     }
-
+    
 
 @router.post("/users/me/upgrade-role")
-async def upgrade_role(data: RoleUpgradeIn, current=Depends(get_current_user)):
-    if current.get("role") == "admin":
-        return await get_user_by_id(current["id"])
-    await db.users.update_one({"id": current["id"]}, {"$set": {"role": data.role}})
-    return await get_user_by_id(current["id"])
+async def upgrade_role(
+    data: RoleUpgradeIn,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
+    )
+
+    user = await UserService.update_user(
+        pg_db,
+        user,
+        {
+            "role": data.role
+        }
+    )
+
+    return {
+        "id": user.id,
+        "username": user.username,
+        "email": user.email,
+        "name": user.name,
+        "role": user.role,
+        "plan": user.plan
+    }
 
 
 @router.get("")
@@ -210,14 +253,19 @@ async def list_users(pg_db: AsyncSession = Depends(get_db)):
     ]
 
 @router.get("/users/me/xp")
-async def my_xp(current=Depends(get_current_user)):
-    user = await db.users.find_one({"id": current["id"]})
-    xp = user.get("xp", 0)
-    earned = user.get("badges", [])
+async def my_xp(
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    user = await UserService.get_user(
+        pg_db,
+        current["id"]
+    )
+    earned = user.badges
     return {
-        "xp": xp,
-        "level": compute_level(xp),
-        "streak": user.get("streak", 0),
+        "xp": user.xp,
+        "level": compute_level(user.xp),
+        "streak": user.streak,
         "earned_badges": [b for b in BADGE_DEFS if b["key"] in earned],
         "all_badges": BADGE_DEFS,
         "recent_events": await db.xp_events.find({"user_id": current["id"]}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20),
