@@ -16,6 +16,11 @@ from core import (
 )
 from notifications_service import send_email, password_reset_html, email_verification_html
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from db.dependencies import get_db
+from services.user_service import UserService
+
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = logging.getLogger("skiller")
 
@@ -25,63 +30,97 @@ class VerifyEmailIn(BaseModel):
 
 
 async def update_streak_on_login(user_id: str):
-    user = await db.users.find_one({"id": user_id})
-    today = date.today().isoformat()
-    last = user.get("last_login_date")
-    streak = user.get("streak", 0)
-    if last == today:
-        return
-    if last:
-        prev = date.fromisoformat(last)
-        diff = (date.today() - prev).days
-        if diff == 1:
-            streak += 1
-        elif diff > 1:
-            streak = 1
+    async def update_streak_on_login(
+    user_id: str,
+    pg_db: AsyncSession
+):
+        user = await UserService.get_user(
+            pg_db,
+            user_id
+        )
+
+        if not user:
+            return
+
+        today = date.today().isoformat()
+        last = user.last_login_date
+        streak = user.streak or 0
+
+        if last == today:
+            return
+
+        if last:
+            prev = date.fromisoformat(last)
+            diff = (date.today() - prev).days
+
+            if diff == 1:
+                streak += 1
+            elif diff > 1:
+                streak = 1
+            else:
+                streak = max(streak, 1)
         else:
-            streak = max(streak, 1)
-    else:
-        streak = 1
-    await db.users.update_one({"id": user_id}, {"$set": {"streak": streak, "last_login_date": today}})
+            streak = 1
+
+        await UserService.update_streak(
+            pg_db,
+            user,
+            streak,
+            today
+        )
+
+        await award_xp(
+            user_id,
+            "daily_login"
+        )
     await award_xp(user_id, "daily_login")
 
 
 @router.post("/register")
-async def register(data: RegisterIn):
+async def register(data: RegisterIn,
+                   pg_db: AsyncSession = Depends(get_db)):
     email = data.email.lower().strip()
-    if await db.users.find_one({"email": email}):
+    if await UserService.get_user_by_email(pg_db,email):
         raise HTTPException(status_code=400, detail="Email already registered")
-    if await db.users.find_one({"username": data.username.lower().strip()}):
+    if await UserService.get_user_by_username(pg_db,data.username.lower().strip()):
         raise HTTPException(status_code=400, detail="Username already taken")
     user_id = str(uuid.uuid4())
 
     # Generate a unique referral code
     for _ in range(5):
         ref_code = generate_referral_code()
-        if not await db.users.find_one({"referral_code": ref_code}):
+        if not await UserService.get_user_by_referral_code(pg_db,ref_code):
             break
 
     # Resolve who referred this user (via stored cookie/body field)
     referred_by = None
     incoming_ref = (data.referral_code or "").strip().upper() if data.referral_code else None
     if incoming_ref:
-        ref_user = await db.users.find_one({"referral_code": incoming_ref}, {"_id": 0, "id": 1})
+        ref_user = await UserService.get_user_by_referral_code(pg_db,incoming_ref)
         if ref_user:
-            referred_by = ref_user["id"]
+            referred_by = ref_user.id
 
-    doc = {
-        "id": user_id, "email": email, "username": data.username.lower().strip(),
-        "name": data.name.strip(), "password_hash": hash_password(data.password),
-        "bio": "", "avatar_url": "", "followers": [], "following": [],
-        "role": data.role, "xp": 0, "badges": [], "streak": 0,
-        "last_login_date": None, "created_at": now_iso(),
-        "referral_code": ref_code,
-        "referred_by": referred_by,
-        "premium_until": trial_premium_until().isoformat(),
-        "plan": "trial",
-        "email_verified": False,
-    }
-    await db.users.insert_one(doc)
+    user = await UserService.create_user(
+        pg_db,
+        id=user_id,
+        email=email,
+        username=data.username.lower().strip(),
+        name=data.name.strip(),
+        password_hash=hash_password(data.password),
+        bio="",
+        avatar_url="",
+        role=data.role,
+        xp=0,
+        badges=[],
+        streak=0,
+        last_login_date=None,
+        referral_code=ref_code,
+        referred_by=referred_by,
+        premium_until=trial_premium_until(),
+        plan="trial",
+        email_verified=False,
+    )
+    
     await ensure_token_wallet(user_id)
     if referred_by:
         await db.referrals.insert_one({
@@ -148,7 +187,8 @@ async def resend_verification(current=Depends(get_current_user)):
 
 
 @router.post("/verify-email")
-async def verify_email(data: VerifyEmailIn):
+async def verify_email(data: VerifyEmailIn,
+                       pg_db: AsyncSession = Depends(get_db)):
     rec = await db.email_verification_tokens.find_one({"token": data.token, "used": False})
     if not rec:
         raise HTTPException(status_code=400, detail="Invalid or expired link")
@@ -161,10 +201,20 @@ async def verify_email(data: VerifyEmailIn):
             raise HTTPException(status_code=400, detail="Verification link expired")
     except (KeyError, ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid link")
-    await db.users.update_one(
-        {"id": rec["user_id"]},
-        {"$set": {"email_verified": True, "email_verified_at": now_iso()}},
+    
+    user = await UserService.get_user(
+        pg_db,
+        rec["user_id"]
     )
+
+    if user:
+        await UserService.update_user(
+            pg_db,
+            user,
+            {
+                "email_verified": True
+            }
+        )
     await db.email_verification_tokens.update_one(
         {"token": data.token}, {"$set": {"used": True}},
     )
@@ -177,14 +227,15 @@ async def verify_email(data: VerifyEmailIn):
 
 
 @router.post("/login")
-async def login(data: LoginIn):
+async def login(data: LoginIn,
+                pg_db: AsyncSession = Depends(get_db)):
     email = data.email.lower().strip()
-    user = await db.users.find_one({"email": email})
-    if not user or not verify_password(data.password, user["password_hash"]):
+    user = await UserService.get_user_by_email(pg_db,email)
+    if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    await update_streak_on_login(user["id"])
-    token = create_access_token(user["id"], email)
-    return {"token": token, "user": await get_user_by_id(user["id"])}
+    await update_streak_on_login(user.id)
+    token = create_access_token(user.id, email)
+    return {"token": token, "user": await get_user_by_id(user.id)}
 
 
 @router.get("/me")
@@ -194,15 +245,16 @@ async def me(current=Depends(get_current_user)):
 
 
 @router.post("/forgot-password")
-async def forgot_password(data: ForgotPasswordIn):
+async def forgot_password(data: ForgotPasswordIn,
+                          pg_db: AsyncSession = Depends(get_db)):
     email = data.email.lower().strip()
-    user = await db.users.find_one({"email": email})
+    user = await UserService.get_user_by_email(pg_db,email)
     if user:
         token = secrets.token_urlsafe(32)
         expires_dt = now() + timedelta(hours=1)
         await db.password_reset_tokens.insert_one({
             "id": str(uuid.uuid4()),
-            "user_id": user["id"],
+            "user_id": user.id,
             "token": token,
             "used": False,
             "expires_at": expires_dt.isoformat(),
@@ -216,7 +268,7 @@ async def forgot_password(data: ForgotPasswordIn):
             await send_email(
                 to_email=email,
                 subject="Reset your Skiller password",
-                html=password_reset_html(user.get("name", ""), link),
+                html=password_reset_html(user.name, link),
             )
         except Exception as e:
             logger.warning(f"Reset email send failed: {e}")
@@ -224,7 +276,8 @@ async def forgot_password(data: ForgotPasswordIn):
 
 
 @router.post("/reset-password")
-async def reset_password(data: ResetPasswordIn):
+async def reset_password(data: ResetPasswordIn,
+                         pg_db: AsyncSession = Depends(get_db)):
     rec = await db.password_reset_tokens.find_one({"token": data.token, "used": False})
     if not rec:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
@@ -233,6 +286,22 @@ async def reset_password(data: ResetPasswordIn):
             raise HTTPException(status_code=400, detail="Token expired")
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid token")
-    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(data.new_password)}})
+    
+    user = await UserService.get_user(
+        pg_db,
+        rec["user_id"]
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found"
+        )
+
+    await UserService.update_password(
+        pg_db,
+        user,
+        hash_password(data.new_password)
+    )
     await db.password_reset_tokens.update_one({"token": data.token}, {"$set": {"used": True}})
     return {"ok": True}

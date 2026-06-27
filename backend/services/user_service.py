@@ -290,3 +290,43 @@ class UserService:
         )
 
         return result.scalar() or 0
+    
+    @staticmethod
+    async def get_user_by_referral_code(
+        db: AsyncSession,
+        referral_code: str
+    ):
+        result = await db.execute(
+            select(User)
+            .where(User.referral_code == referral_code)
+        )
+
+        return result.scalar_one_or_none()
+    
+    @staticmethod
+    async def update_streak(
+        db: AsyncSession,
+        user: User,
+        streak: int,
+        last_login_date
+    ):
+        user.streak = streak
+        user.last_login_date = last_login_date
+
+        await db.commit()
+        await db.refresh(user)
+
+        return user
+    
+    @staticmethod
+    async def update_password(
+        db: AsyncSession,
+        user: User,
+        password_hash: str
+    ):
+        user.password_hash = password_hash
+
+        await db.commit()
+        await db.refresh(user)
+
+        return user
