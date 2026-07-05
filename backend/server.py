@@ -71,7 +71,7 @@ app.include_router(enrollments_router)
 
 @app.on_event("startup")
 async def startup():
-    await seed()
+    logger.info("Application started")
     init_storage()
     try:
         priv, pub = await init_vapid_keys()
