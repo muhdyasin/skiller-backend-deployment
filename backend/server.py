@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from core import client, init_storage  # loads .env via core
 from notifications_service import set_vapid_keys
-from seed import seed, init_vapid_keys
+from seed import seed
 
 from routers.auth import router as auth_router
 from routers.users import router as users_router
@@ -73,12 +73,12 @@ app.include_router(enrollments_router)
 async def startup():
     logger.info("Application started")
     init_storage()
-    try:
-        priv, pub = await init_vapid_keys()
-        set_vapid_keys(priv, pub)
-        logger.info("VAPID keys ready")
-    except Exception as e:
-        logger.warning(f"VAPID init failed: {e}")
+    # try:
+    #     priv, pub = await init_vapid_keys()
+    #     set_vapid_keys(priv, pub)
+    #     logger.info("VAPID keys ready")
+    # except Exception as e:
+    #     logger.warning(f"VAPID init failed: {e}")
 
 
 @app.on_event("shutdown")

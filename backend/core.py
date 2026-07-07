@@ -285,7 +285,7 @@ def generate_referral_code() -> str:
 
 
 def trial_premium_until() -> datetime:
-    return now() + timedelta(days=TRIAL_DAYS)
+    return (now() + timedelta(days=TRIAL_DAYS)).replace(tzinfo=None)
 
 
 async def ensure_token_wallet(user_id: str):

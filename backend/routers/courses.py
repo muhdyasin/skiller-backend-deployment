@@ -1,7 +1,12 @@
 """Courses CRUD + enrollment."""
-import uuid
+
 from fastapi import APIRouter, HTTPException, Depends
-from core import db, now_iso, get_current_user, award_xp, CourseCreate, CourseUpdate
+from core import (
+    get_current_user,
+    award_xp,
+    CourseCreate,
+    CourseUpdate,
+)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -271,7 +276,7 @@ async def purchase_course(
         transaction
     )
 
-    # Create enrollment (Mongo)
+    # Create enrollment
     await EnrollmentService.create_enrollment(
         db=pg_db,
         user_id=current["id"],
