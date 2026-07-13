@@ -233,7 +233,7 @@ async def login(data: LoginIn,
     user = await UserService.get_user_by_email(pg_db,email)
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    await update_streak_on_login(user.id)
+    # await update_streak_on_login(user.id)
     token = create_access_token(user.id, email)
     return {"token": token, "user": await get_user_by_id(user.id)}
 
