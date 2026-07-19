@@ -44,6 +44,22 @@ class WithdrawalService:
         db: AsyncSession,
         withdrawal: Withdrawal
     ):
+        wallet = await WalletService.get_wallet(
+            db,
+            withdrawal.user_id
+        )
+
+        if wallet:
+            await WalletService.create_ledger_entry(
+                db=db,
+                wallet_id=wallet.id,
+                transaction_type="withdrawal_approved",
+                amount=withdrawal.amount,
+                reference_type="withdrawal",
+                reference_id=withdrawal.id,
+                description="Withdrawal approved"
+            )
+
         withdrawal.status = "approved"
         withdrawal.processed_at = datetime.utcnow()
 

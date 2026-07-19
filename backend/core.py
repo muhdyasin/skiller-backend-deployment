@@ -438,9 +438,8 @@ class RegisterIn(BaseModel):
 
     @field_validator("role")
     @classmethod
-    def _validate_role(cls, v: str) -> str:
-        v = (v or "student").lower().strip()
-        if v not in {"student", "creator"}:
+    def validate_role(cls, v):
+        if v not in ["student", "creator"]:
             raise ValueError("role must be 'student' or 'creator'")
         return v
 
