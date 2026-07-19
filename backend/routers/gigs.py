@@ -175,11 +175,6 @@ async def apply_gig(
         status="pending"
     )
 
-    await award_xp(
-        current["id"],
-        "gig_apply"
-    )
-
     if gig.owner_id:
         await create_notification(
             gig.owner_id,
