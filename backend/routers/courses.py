@@ -187,11 +187,6 @@ async def enroll_course(
         course
     )
 
-    await award_xp(
-        current["id"],
-        "course_enroll"
-    )
-
     return {
         "ok": True
     }
@@ -289,11 +284,6 @@ async def purchase_course(
     await CourseService.increment_students(
         pg_db,
         course
-    )
-
-    await award_xp(
-        current["id"],
-        "course_enroll"
     )
 
     return {

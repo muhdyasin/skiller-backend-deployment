@@ -29,51 +29,46 @@ class VerifyEmailIn(BaseModel):
     token: str
 
 
-async def update_streak_on_login(user_id: str):
-    async def update_streak_on_login(
+async def update_streak_on_login(
     user_id: str,
     pg_db: AsyncSession
 ):
-        user = await UserService.get_user(
-            pg_db,
-            user_id
-        )
+    user = await UserService.get_user(
+        pg_db,
+        user_id
+    )
 
-        if not user:
-            return
+    if not user:
+        return
 
-        today = date.today().isoformat()
-        last = user.last_login_date
-        streak = user.streak or 0
+    today = date.today().isoformat()
+    last = user.last_login_date
+    streak = user.streak or 0
 
-        if last == today:
-            return
+    if last == today:
+        return
 
-        if last:
-            prev = date.fromisoformat(last)
-            diff = (date.today() - prev).days
+    if last:
+        prev = date.fromisoformat(last)
+        diff = (date.today() - prev).days
 
-            if diff == 1:
-                streak += 1
-            elif diff > 1:
-                streak = 1
-            else:
-                streak = max(streak, 1)
-        else:
+        if diff == 1:
+            streak += 1
+        elif diff > 1:
             streak = 1
+        else:
+            streak = max(streak, 1)
+    else:
+        streak = 1
 
-        await UserService.update_streak(
-            pg_db,
-            user,
-            streak,
-            today
-        )
+    await UserService.update_streak(
+        pg_db,
+        user,
+        streak,
+        today
+    )
 
-        await award_xp(
-            user_id,
-            "daily_login"
-        )
-    await award_xp(user_id, "daily_login")
+    # XP temporarily disabled until PostgreSQL migration is complete.
 
 
 @router.post("/register")
@@ -130,7 +125,7 @@ async def register(data: RegisterIn,
             "status": "pending",  # → "rewarded" after first paid subscription
             "created_at": now_iso(),
         })
-    await update_streak_on_login(user_id)
+    await update_streak_on_login(user_id,pg_db)
     # fire-and-forget verification email
     try:
         await _issue_verification_token(user_id, email, data.name.strip())
@@ -233,14 +228,15 @@ async def login(data: LoginIn,
     user = await UserService.get_user_by_email(pg_db,email)
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    # await update_streak_on_login(user.id)
+    await update_streak_on_login(user.id, pg_db)
     token = create_access_token(user.id, email)
     return {"token": token, "user": await get_user_by_id(user.id)}
 
 
 @router.get("/me")
-async def me(current=Depends(get_current_user)):
-    await update_streak_on_login(current["id"])
+async def me(current=Depends(get_current_user),
+             pg_db: AsyncSession = Depends(get_db)):
+    await update_streak_on_login(current["id"],pg_db)
     return await get_user_by_id(current["id"])
 
 
