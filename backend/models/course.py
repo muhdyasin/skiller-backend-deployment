@@ -2,9 +2,14 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import String, Integer, Float, DateTime, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from db.session import Base
+from db.session import Base 
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from models.lesson import Lesson
 
 
 class Course(Base):
@@ -69,4 +74,11 @@ class Course(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=datetime.utcnow
+    )
+    
+    lesson_items: Mapped[list["Lesson"]] = relationship(
+        "Lesson",
+        backref="course",
+        cascade="all, delete-orphan",
+        order_by="Lesson.order_index"
     )

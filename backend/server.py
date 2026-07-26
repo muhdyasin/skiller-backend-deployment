@@ -38,6 +38,7 @@ from routers import wallets
 from routers import withdrawals
 from routers.admin_withdrawals import router as admin_withdrawals_router
 from routers.enrollments import router as enrollments_router
+from routers.lessons import router as lessons_router
 
 logger = logging.getLogger("skiller")
 logging.basicConfig(level=logging.INFO)
@@ -67,6 +68,7 @@ app.include_router(wallets.router)
 app.include_router(withdrawals.router)
 app.include_router(admin_withdrawals_router)
 app.include_router(enrollments_router)
+app.include_router(lessons_router)
 
 
 @app.on_event("startup")

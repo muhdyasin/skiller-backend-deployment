@@ -59,13 +59,16 @@ async def create_course(
         title=data.title,
         description=data.description,
         price=data.price,
-        lessons=data.lessons,
+
+        # NEW
+        lesson_items=data.lesson_items,
+
         thumbnail=data.thumbnail or "https://images.unsplash.com/photo-1519408469771-2586093c3f14?w=1200&q=80",
         category=data.category,
         rating=5.0,
         students=0
     )
-
+    
     return course
 
 

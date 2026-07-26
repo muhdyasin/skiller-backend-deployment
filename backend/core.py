@@ -529,14 +529,29 @@ class RoleUpgradeIn(BaseModel):
         return v
 
 
+class LessonCreate(BaseModel):
+    title: str
+    description: str
+    youtube_url: str
+    notes_links: list[str] = Field(default_factory=list)
+    order_index: int = 1
+    
+class LessonUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    youtube_url: str | None = None
+    notes_links: list[str] | None = None
+    order_index: int | None = None
+
 class CourseCreate(BaseModel):
     title: str
     description: str
     price: int = 0
-    lessons: int = 1
+
     thumbnail: str = ""
     category: str = "General"
 
+    lesson_items: list[LessonCreate] = Field(default_factory=list)
 
 class CourseUpdate(BaseModel):
     title: Optional[str] = None

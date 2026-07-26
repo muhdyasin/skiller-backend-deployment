@@ -6,6 +6,7 @@ from .payment_transaction import PaymentTransaction
 from .withdrawal import Withdrawal
 from .enrollment import Enrollment
 from .course import Course
+from .lesson import Lesson
 from .gig import Gig
 from .application import Application
 from .user import User
