@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.course import Course
 from models.lesson import Lesson
+from models.enrollment import Enrollment
 
 
 class CourseService:
@@ -106,5 +107,54 @@ class CourseService:
     ):
         await db.delete(course)
         await db.commit()
+        
+
+    @staticmethod
+    async def list_enrolled_courses(
+        db: AsyncSession,
+        user_id: str
+    ):
+        result = await db.execute(
+            select(Course)
+            .join(
+                Enrollment,
+                Enrollment.course_id == Course.id
+            )
+            .options(
+                selectinload(Course.lesson_items)
+            )
+            .where(
+                Enrollment.user_id == user_id
+            )
+        )
+
+        return result.scalars().all()
+
+
+    @staticmethod
+    async def list_not_enrolled_courses(
+        db: AsyncSession,
+        user_id: str
+    ):
+        enrolled = await db.execute(
+            select(Enrollment.course_id)
+            .where(
+                Enrollment.user_id == user_id
+            )
+        )
+
+        enrolled_ids = enrolled.scalars().all()
+
+        result = await db.execute(
+            select(Course)
+            .options(
+                selectinload(Course.lesson_items)
+            )
+            .where(
+                Course.id.not_in(enrolled_ids)
+            )
+        )
+
+        return result.scalars().all()
 
 

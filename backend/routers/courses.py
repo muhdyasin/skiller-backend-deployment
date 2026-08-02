@@ -27,6 +27,27 @@ async def list_courses(pg_db: AsyncSession = Depends(get_db)):
 
     return courses
 
+@router.get("/enrolled")
+async def list_enrolled_courses(
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    return await CourseService.list_enrolled_courses(
+        pg_db,
+        current["id"]
+    )
+
+
+@router.get("/not-enrolled")
+async def list_not_enrolled_courses(
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    return await CourseService.list_not_enrolled_courses(
+        pg_db,
+        current["id"]
+    )
+
 @router.get("/{course_id}")
 async def get_course(
     course_id: str,
