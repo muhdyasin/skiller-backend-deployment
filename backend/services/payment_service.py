@@ -113,16 +113,18 @@ class PaymentService:
         db: AsyncSession,
         payer_id: str,
         amount: int,
-        plan_id: str,
-        order_id: str
+        order_id: str,
+        plan_id: str | None = None,
+        course_id: str | None = None,
     ):
         transaction = PaymentTransaction(
         payer_id=payer_id,
         amount=amount,
-        transaction_type="subscription",
+        transaction_type="subscription" if plan_id else "course_purchase",
         payment_provider="razorpay",
         provider_order_id=order_id,
         plan_id=plan_id,
+        course_id=course_id,
         status="created"
         )
 

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Skiller Course Payment Test</title>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<style>
+body{
+    font-family:Arial;
+    margin:40px;
+    max-width:800px;
+}
+input{
+    width:100%;
+    padding:10px;
+    margin-bottom:15px;
+}
+button{
+    padding:12px 20px;
+    font-size:16px;
+}
+pre{
+    background:#f4f4f4;
+    padding:15px;
+    white-space:pre-wrap;
+}
+</style>
+
+</head>
+<body>
+
+<h2>Skiller Course Payment Test</h2>
+
+<label>Student JWT</label>
+<input id="token">
+
+<label>Course ID</label>
+<input id="courseId" value="235c1c34-1413-405c-a6e5-568404929bab">
+
+<button onclick="payCourse()">
+Pay Course
+</button>
+
+<h3>Logs</h3>
+
+<pre id="logs"></pre>
+
+<script>
+
+const API="http://127.0.0.1:8000";
+
+function log(x){
+    console.log(x);
+
+    document.getElementById("logs").textContent +=
+        JSON.stringify(x,null,2)+"\n\n";
+}
+
+async function payCourse(){
+
+    document.getElementById("logs").textContent="";
+
+    const token=document.getElementById("token").value;
+    const courseId=document.getElementById("courseId").value;
+
+    log("Creating Razorpay Order...");
+
+    const checkout=await fetch(
+        `${API}/api/courses/${courseId}/checkout`,
+        {
+            method:"POST",
+            headers:{
+                Authorization:`Bearer ${token}`,
+                "Content-Type":"application/json"
+            },
+            body:JSON.stringify({
+                pay_with:"razorpay"
+            })
+        }
+    );
+
+    const order=await checkout.json();
+
+    log(order);
+
+    if(order.status!=="order_created"){
+        alert("Checkout failed");
+        return;
+    }
+
+    const options={
+
+        key:order.key_id,
+
+        amount:order.amount,
+
+        currency:order.currency,
+
+        order_id:order.order_id,
+
+        name:"Skiller",
+
+        description:order.course_title,
+
+        prefill:order.prefill,
+
+        handler:async function(response){
+
+            log(response);
+
+            const verify=await fetch(
+                `${API}/api/courses/verify-payment`,
+                {
+                    method:"POST",
+                    headers:{
+                        Authorization:`Bearer ${token}`,
+                        "Content-Type":"application/json"
+                    },
+                    body:JSON.stringify({
+
+                        razorpay_order_id:
+                            response.razorpay_order_id,
+
+                        razorpay_payment_id:
+                            response.razorpay_payment_id,
+
+                        razorpay_signature:
+                            response.razorpay_signature
+                    })
+                }
+            );
+
+            const result=await verify.json();
+
+            log(result);
+
+            alert("Finished");
+        }
+    };
+
+    const razorpay=new Razorpay(options);
+
+    razorpay.open();
+
+}
+
+</script>
+
+</body>
+</html>

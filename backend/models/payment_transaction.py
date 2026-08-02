@@ -55,6 +55,11 @@ class PaymentTransaction(Base):
     String,
     nullable=True
     )
+    
+    course_id: Mapped[str] = mapped_column(
+    String,
+    nullable=True
+    )
 
     status: Mapped[str] = mapped_column(
         String,

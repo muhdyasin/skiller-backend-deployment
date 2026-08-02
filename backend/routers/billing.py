@@ -14,9 +14,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel,model_validator
 
 from services.user_service import UserService
+from services.course_service import CourseService
 
 import razorpay
 
@@ -76,8 +77,17 @@ PLANS = {
 
 
 class CheckoutIn(BaseModel):
-    plan_id: str
+    plan_id: Optional[str] = None
+    course_id: Optional[str] = None
     pay_with: Literal["razorpay", "stripe", "tokens"] = "razorpay"
+
+    @model_validator(mode="after")
+    def validate_request(self):
+        if bool(self.plan_id) == bool(self.course_id):
+            raise ValueError(
+                "Exactly one of 'plan_id' or 'course_id' must be provided."
+            )
+        return self
 
 
 class VerifyIn(BaseModel):
@@ -328,23 +338,12 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user), pg_db: A
     raise HTTPException(status_code=400, detail="Unknown payment provider")
 
 
-@router.post("/verify-payment")
-async def verify_payment(
-    data: VerifyIn,
-    current=Depends(get_current_user),
-    pg_db: AsyncSession = Depends(get_db)
+def verify_razorpay_signature(
+    order_id: str,
+    payment_id: str,
+    signature: str
 ):
-    if not RAZORPAY_KEY_SECRET:
-        raise HTTPException(
-            status_code=503,
-            detail="Razorpay not configured"
-        )
-
-    # Verify Razorpay signature
-    body = (
-        f"{data.razorpay_order_id}|"
-        f"{data.razorpay_payment_id}"
-    ).encode()
+    body = f"{order_id}|{payment_id}".encode()
 
     expected = hmac.new(
         RAZORPAY_KEY_SECRET.encode(),
@@ -352,14 +351,25 @@ async def verify_payment(
         hashlib.sha256
     ).hexdigest()
 
-    if not hmac.compare_digest(
-        expected,
-        data.razorpay_signature
-    ):
+    if not hmac.compare_digest(expected, signature):
         raise HTTPException(
             status_code=400,
             detail="Invalid signature"
         )
+        
+@router.post("/verify-payment")        
+        
+async def verify_payment(
+    data: VerifyIn,
+    current=Depends(get_current_user),
+    pg_db: AsyncSession = Depends(get_db)
+):
+    verify_razorpay_signature(
+        data.razorpay_order_id,
+        data.razorpay_payment_id,
+        data.razorpay_signature
+    )
+
 
     # Find transaction
     transaction = await PaymentService.get_transaction_by_order_id(
