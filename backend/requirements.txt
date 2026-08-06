@@ -29,3 +29,4 @@ starlette
 stripe
 uvicorn[standard]
 websockets
+openai
