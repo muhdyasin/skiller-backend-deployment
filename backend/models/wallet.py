@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-
-from sqlalchemy import String, Integer, DateTime
+from decimal import Decimal
+from sqlalchemy import String, Integer, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -20,13 +20,13 @@ class Wallet(Base):
 
     owner_type: Mapped[str] = mapped_column(String, nullable=False)
 
-    balance: Mapped[int] = mapped_column(Integer, default=0)
+    balance: Mapped[Decimal] = mapped_column(Numeric(12,2), default=0)
 
-    pending_balance: Mapped[int] = mapped_column(Integer, default=0)
+    pending_balance: Mapped[Decimal] = mapped_column(Numeric(12,2), default=0)
 
-    lifetime_earned: Mapped[int] = mapped_column(Integer, default=0)
+    lifetime_earned: Mapped[Decimal] = mapped_column(Numeric(12,2), default=0)
 
-    lifetime_withdrawn: Mapped[int] = mapped_column(Integer, default=0)
+    lifetime_withdrawn: Mapped[Decimal] = mapped_column(Numeric( 12,2), default=0)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

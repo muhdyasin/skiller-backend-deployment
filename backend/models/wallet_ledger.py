@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-
-from sqlalchemy import String, Integer, DateTime
+from decimal import Decimal
+from sqlalchemy import String, Integer, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -20,7 +20,7 @@ class WalletLedger(Base):
 
     transaction_type: Mapped[str] = mapped_column(String, nullable=False)
 
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12,2), nullable=False)
 
     reference_type: Mapped[str] = mapped_column(String, nullable=True)
 

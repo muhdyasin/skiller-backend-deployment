@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-
-from sqlalchemy import String, Integer, DateTime
+from decimal import Decimal
+from sqlalchemy import String, Integer, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -21,8 +21,8 @@ class Withdrawal(Base):
         nullable=False
     )
 
-    amount: Mapped[int] = mapped_column(
-        Integer,
+    amount: Mapped[Decimal] = mapped_column(
+        Numeric(12,2),
         nullable=False
     )
 
@@ -31,10 +31,10 @@ class Withdrawal(Base):
         nullable=False,
         default="pending"
     )
-    # pending
-    # approved
-    # rejected
-    # completed
+    # pending = funds reserved and awaiting payout
+    # processing = payout provider is processing
+    # successful = payout confirmed
+    # failed = payout failed and funds released
 
     requested_at: Mapped[datetime] = mapped_column(
         DateTime,
@@ -47,6 +47,26 @@ class Withdrawal(Base):
     )
 
     remarks: Mapped[str] = mapped_column(
+        String,
+        nullable=True
+    )
+    
+    idempotency_key: Mapped[str] = mapped_column(
+        String,
+        nullable=True
+    )
+
+    payout_provider: Mapped[str] = mapped_column(
+        String,
+        nullable=True
+    )
+
+    payout_reference: Mapped[str] = mapped_column(
+        String,
+        nullable=True
+    )
+
+    failure_reason: Mapped[str] = mapped_column(
         String,
         nullable=True
     )

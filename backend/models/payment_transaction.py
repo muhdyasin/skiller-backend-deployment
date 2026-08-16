@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-
-from sqlalchemy import String, Integer, DateTime
+from decimal import Decimal
+from sqlalchemy import String, Integer, DateTime, Numeric
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -20,10 +20,10 @@ class PaymentTransaction(Base):
 
     payee_id: Mapped[str] = mapped_column(String, nullable=True)
 
-    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12,2), nullable=False)
 
-    commission_amount: Mapped[int] = mapped_column(
-        Integer,
+    commission_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12,2),
         default=0
     )
 

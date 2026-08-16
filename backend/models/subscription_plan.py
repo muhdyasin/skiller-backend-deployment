@@ -15,6 +15,12 @@ class SubscriptionPlan(Base):
         primary_key=True,
         default=lambda: str(uuid.uuid4())
     )
+    
+    code: Mapped[str] = mapped_column(
+        String,
+        nullable=True,
+        unique=True
+    )
 
     name: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -24,6 +30,11 @@ class SubscriptionPlan(Base):
     price: Mapped[int] = mapped_column(Integer, nullable=False)
 
     duration_days: Mapped[int] = mapped_column(Integer, nullable=False)
+    
+    max_courses: Mapped[int] = mapped_column(
+        Integer,
+        nullable=True   
+    )
 
     is_active: Mapped[bool] = mapped_column(
         Boolean,
