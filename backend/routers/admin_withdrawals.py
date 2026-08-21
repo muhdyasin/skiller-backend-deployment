@@ -50,10 +50,16 @@ async def approve_withdrawal(
             detail="Withdrawal not found"
         )
 
-    return await WithdrawalService.approve(
-        db,
-        withdrawal
-    )
+    try:
+        return await WithdrawalService.approve(
+            db,
+            withdrawal
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
 
 @router.patch("/{withdrawal_id}/reject")
@@ -75,8 +81,14 @@ async def reject_withdrawal(
             detail="Withdrawal not found"
         )
 
-    return await WithdrawalService.reject(
-        db,
-        withdrawal,
-        "Rejected by admin"
-    )
+    try:
+        return await WithdrawalService.reject(
+            db,
+            withdrawal,
+            "Rejected by admin"
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )

@@ -39,7 +39,7 @@ if RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET:
 
 class CourseCheckoutIn(BaseModel):
     pay_with: Literal["razorpay"] = "razorpay"
-    
+
 class CourseVerifyPaymentIn(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
@@ -116,7 +116,7 @@ async def create_course(
         rating=5.0,
         students=0
     )
-    
+
     return course
 
 
@@ -238,6 +238,7 @@ async def enroll_course(
         course
     )
 
+
     return {
         "ok": True
     }
@@ -267,7 +268,7 @@ async def checkout_course(
             status_code=400,
             detail="Cannot purchase your own course"
         )
-        
+
     existing = await EnrollmentService.get_user_enrollment(
     pg_db,
     current["id"],
@@ -334,7 +335,7 @@ async def checkout_course(
             "email": current.get("email", "")
         }
     }
-    
+
 @router.post("/verify-payment")
 async def verify_course_payment(
     data: CourseVerifyPaymentIn,
@@ -457,7 +458,7 @@ async def purchase_course(
         pg_db,
         course_id
     )
-    
+
     if not course:
         raise HTTPException(
             status_code=404,
@@ -539,6 +540,8 @@ async def purchase_course(
         pg_db,
         course
     )
+
+    await pg_db.commit()
 
     return {
         "ok": True,

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,19 @@ class WalletService:
             select(Wallet).where(
                 Wallet.owner_id == owner_id
             )
+        )
+
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_wallet_for_update(
+        db: AsyncSession,
+        owner_id: str
+    ):
+        result = await db.execute(
+            select(Wallet)
+            .where(Wallet.owner_id == owner_id)
+            .with_for_update()
         )
 
         return result.scalar_one_or_none()
@@ -63,7 +78,7 @@ class WalletService:
         db: AsyncSession,
         wallet_id: str,
         transaction_type: str,
-        amount: int,
+        amount,
         reference_type: str = None,
         reference_id: str = None,
         description: str = None
@@ -78,9 +93,7 @@ class WalletService:
         )
 
         db.add(entry)
-
-        await db.commit()
-        await db.refresh(entry)
+        await db.flush()
 
         return entry
 
@@ -103,25 +116,27 @@ class WalletService:
 
     @staticmethod
     async def credit_wallet(
-    db: AsyncSession,
-    wallet: Wallet,
-    amount: int,
-    description: str = None
+        db: AsyncSession,
+        wallet: Wallet,
+        amount,
+        description: str = None,
+        reference_type: str = None,
+        reference_id: str = None
     ):
         wallet.balance += amount
         wallet.lifetime_earned += amount
-
-        await db.commit()
-        await db.refresh(wallet)
 
         await WalletService.create_ledger_entry(
             db=db,
             wallet_id=wallet.id,
             transaction_type="credit",
             amount=amount,
+            reference_type=reference_type,
+            reference_id=reference_id,
             description=description
         )
 
+        await db.flush()
         return wallet
 
     @staticmethod
@@ -141,7 +156,7 @@ class WalletService:
 
         await db.commit()
         await db.refresh(wallet)
-        
+
         await WalletService.create_ledger_entry(
         db=db,
         wallet_id=wallet.id,
@@ -149,5 +164,89 @@ class WalletService:
         amount=amount,
         description=description
         )
+
+        return wallet
+
+    @staticmethod
+    async def reserve_withdrawal(
+        db: AsyncSession,
+        wallet: Wallet,
+        amount,
+        withdrawal_id: str
+    ):
+        if wallet.balance < amount:
+            raise ValueError("Insufficient wallet balance")
+
+        wallet.balance -= amount
+        wallet.pending_balance += amount
+
+        await WalletService.create_ledger_entry(
+            db=db,
+            wallet_id=wallet.id,
+            transaction_type="withdrawal_pending",
+            amount=amount,
+            reference_type="withdrawal",
+            reference_id=withdrawal_id,
+            description="Withdrawal funds reserved"
+        )
+
+        await db.flush()
+
+        return wallet
+
+
+    @staticmethod
+    async def complete_withdrawal(
+        db: AsyncSession,
+        wallet: Wallet,
+        amount,
+        withdrawal_id: str
+    ):
+        if wallet.pending_balance < amount:
+            raise ValueError("Insufficient pending withdrawal balance")
+
+        wallet.pending_balance -= amount
+        wallet.lifetime_withdrawn += amount
+
+        await WalletService.create_ledger_entry(
+            db=db,
+            wallet_id=wallet.id,
+            transaction_type="withdrawal_completed",
+            amount=amount,
+            reference_type="withdrawal",
+            reference_id=withdrawal_id,
+            description="Withdrawal completed"
+        )
+
+        await db.flush()
+
+        return wallet
+
+
+    @staticmethod
+    async def release_withdrawal(
+        db: AsyncSession,
+        wallet: Wallet,
+        amount,
+        withdrawal_id: str,
+        description: str = "Withdrawal failed - funds released"
+    ):
+        if wallet.pending_balance < amount:
+            raise ValueError("Insufficient pending withdrawal balance")
+
+        wallet.pending_balance -= amount
+        wallet.balance += amount
+
+        await WalletService.create_ledger_entry(
+            db=db,
+            wallet_id=wallet.id,
+            transaction_type="withdrawal_released",
+            amount=amount,
+            reference_type="withdrawal",
+            reference_id=withdrawal_id,
+            description=description
+        )
+
+        await db.flush()
 
         return wallet

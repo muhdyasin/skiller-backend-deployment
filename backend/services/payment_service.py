@@ -75,7 +75,7 @@ class PaymentService:
         transaction.provider_order_id = provider_order_id
         transaction.provider_payment_id = provider_payment_id
 
-        await db.commit()
+        await db.flush()
 
         return transaction
 

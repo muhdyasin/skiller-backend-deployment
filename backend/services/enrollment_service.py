@@ -23,7 +23,7 @@ class EnrollmentService:
 
         db.add(enrollment)
 
-        await db.commit()
+        await db.flush()
         await db.refresh(enrollment)
 
         return enrollment

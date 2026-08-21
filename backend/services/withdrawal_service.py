@@ -44,23 +44,29 @@ class WithdrawalService:
         db: AsyncSession,
         withdrawal: Withdrawal
     ):
-        wallet = await WalletService.get_wallet(
+        if withdrawal.status != "pending":
+            raise ValueError(
+                f"Withdrawal cannot be approved from status '{withdrawal.status}'"
+            )
+
+        wallet = await WalletService.get_wallet_for_update(
             db,
             withdrawal.user_id
         )
 
-        if wallet:
-            await WalletService.create_ledger_entry(
-                db=db,
-                wallet_id=wallet.id,
-                transaction_type="withdrawal_approved",
-                amount=withdrawal.amount,
-                reference_type="withdrawal",
-                reference_id=withdrawal.id,
-                description="Withdrawal approved"
+        if not wallet:
+            raise ValueError(
+                "Wallet not found"
             )
 
-        withdrawal.status = "approved"
+        await WalletService.complete_withdrawal(
+            db=db,
+            wallet=wallet,
+            amount=withdrawal.amount,
+            withdrawal_id=withdrawal.id
+        )
+
+        withdrawal.status = "successful"
         withdrawal.processed_at = datetime.utcnow()
 
         await db.commit()
@@ -74,20 +80,30 @@ class WithdrawalService:
         withdrawal: Withdrawal,
         remarks: str = None,
     ):
-        wallet = await WalletService.get_wallet(
+        if withdrawal.status != "pending":
+            raise ValueError(
+                f"Withdrawal cannot be rejected from status '{withdrawal.status}'"
+            )
+
+        wallet = await WalletService.get_wallet_for_update(
             db,
             withdrawal.user_id
         )
 
-        if wallet:
-            await WalletService.credit_wallet(
-                db,
-                wallet,
-                withdrawal.amount,
-                "Withdrawal rejected refund"
+        if not wallet:
+            raise ValueError(
+                "Wallet not found"
             )
 
-        withdrawal.status = "rejected"
+        await WalletService.release_withdrawal(
+            db=db,
+            wallet=wallet,
+            amount=withdrawal.amount,
+            withdrawal_id=withdrawal.id,
+            description="Withdrawal rejected - funds released"
+        )
+
+        withdrawal.status = "failed"
         withdrawal.remarks = remarks
         withdrawal.processed_at = datetime.utcnow()
 

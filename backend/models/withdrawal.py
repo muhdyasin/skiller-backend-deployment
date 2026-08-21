@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import String, Integer, DateTime, Numeric
+from sqlalchemy import String, Integer, DateTime, Numeric, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.session import Base
@@ -9,6 +9,13 @@ from db.session import Base
 
 class Withdrawal(Base):
     __tablename__ = "withdrawals"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "idempotency_key",
+            name="uq_withdrawals_user_idempotency"
+        ),
+    )
 
     id: Mapped[str] = mapped_column(
         String,

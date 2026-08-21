@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,40 +19,69 @@ from pydantic import BaseModel, Field
 
 
 class WithdrawalRequest(BaseModel):
-    amount: int = Field(gt=0)
-    
+    amount: Decimal = Field(gt=0)
+    idempotency_key:str = Field(
+        min_length=1,
+        max_length=255
+    )
+
 @router.post("/")
 async def request_withdrawal(
     data: WithdrawalRequest,
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    wallet = await WalletService.get_or_create_wallet(
-        db,
-        current["id"],
-        current["role"]
+    existing_result = await db.execute(
+        select(Withdrawal)
+        .where(
+            Withdrawal.user_id == current["id"],
+            Withdrawal.idempotency_key == data.idempotency_key
+        )
     )
 
-    if wallet.balance < data.amount:
-        raise HTTPException(
-            status_code=400,
-            detail="Insufficient balance"
-        )
-    
-    await WalletService.debit_wallet(
+    existing = existing_result.scalar_one_or_none()
+
+    if existing:
+        return existing
+
+    wallet = await WalletService.get_wallet_for_update(
         db,
-        wallet,
-        data.amount,
-        "Withdrawal request"
+        current["id"]
     )
-        
+
+    if not wallet:
+        raise HTTPException(
+            status_code=404,
+            detail="Wallet not found"
+        )
+
     withdrawal = Withdrawal(
         user_id=current["id"],
         amount=data.amount,
-        status="pending"
+        status="pending",
+
+        idempotency_key = data.idempotency_key
     )
 
     db.add(withdrawal)
+
+    await db.flush()
+
+    try:
+        await WalletService.reserve_withdrawal(
+            db=db,
+            wallet=wallet,
+            amount=data.amount,
+            withdrawal_id=withdrawal.id
+        )
+
+    except ValueError as e:
+        await db.rollback()
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
 
     await db.commit()
     await db.refresh(withdrawal)

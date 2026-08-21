@@ -80,7 +80,7 @@ class CourseService:
     ):
         course.students += 1
 
-        await db.commit()
+        await db.flush()
         await db.refresh(course)
 
         return course
