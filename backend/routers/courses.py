@@ -12,6 +12,7 @@ import os
 import razorpay
 import logging
 
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from typing import Literal, Optional
@@ -21,6 +22,8 @@ from services.payment_service import PaymentService
 from services.wallet_service import WalletService
 from services.enrollment_service import EnrollmentService
 from services.course_service import CourseService
+from services.subscription_service import SubscriptionService
+from models.course import Course
 from routers.billing import verify_razorpay_signature
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
@@ -100,6 +103,63 @@ async def create_course(
     current=Depends(get_current_user),
     pg_db: AsyncSession = Depends(get_db)
 ):
+    if current.get("role") == "creator":
+        subscription = await SubscriptionService.get_subscription_by_user(
+            pg_db,
+            current["id"]
+        )
+
+        if not subscription:
+            raise HTTPException(
+                status_code=403,
+                detail="Active creator subscription required"
+            )
+
+        if not SubscriptionService.is_subscription_active(
+            subscription
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Active creator subscription required"
+            )
+
+        plan = await SubscriptionService.get_plan(
+            pg_db,
+            subscription.plan_id
+        )
+
+        if not plan:
+            raise HTTPException(
+                status_code=403,
+                detail="Subscription plan not found"
+            )
+
+        if plan.user_type != "creator":
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid creator subscription plan"
+            )
+
+        if plan.max_courses is not None:
+            result = await pg_db.execute(
+                select(func.count())
+                .select_from(Course)
+                .where(
+                    Course.owner_id == current["id"]
+                )
+            )
+
+            course_count = result.scalar_one()
+
+            if course_count >= plan.max_courses:
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Course limit reached for your plan. "
+                        f"Maximum allowed courses: {plan.max_courses}"
+                    )
+                )
+
     course = await CourseService.create_course(
         db=pg_db,
         owner_id=current["id"],
@@ -107,10 +167,7 @@ async def create_course(
         title=data.title,
         description=data.description,
         price=data.price,
-
-        # NEW
         lesson_items=data.lesson_items,
-
         thumbnail=data.thumbnail or "https://images.unsplash.com/photo-1519408469771-2586093c3f14?w=1200&q=80",
         category=data.category,
         rating=5.0,
@@ -118,7 +175,6 @@ async def create_course(
     )
 
     return course
-
 
 @router.patch("/{course_id}")
 async def update_course(
@@ -437,6 +493,8 @@ async def verify_course_payment(
         pg_db,
         course
     )
+
+    await pg_db.commit()
 
     return {
         "status": "paid",

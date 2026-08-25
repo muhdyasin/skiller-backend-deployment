@@ -9,6 +9,7 @@ from core import get_current_user
 
 from models.withdrawal import Withdrawal
 from services.wallet_service import WalletService
+from services.payout_account_service import PayoutAccountService
 
 router = APIRouter(
     prefix="/api/withdrawals",
@@ -31,6 +32,27 @@ async def request_withdrawal(
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    if current.get("role") != "creator":
+        raise HTTPException(
+            status_code=403,
+            detail="Only creators can request withdrawals"
+        )
+    payout_account = await PayoutAccountService.get_by_user(
+        db,
+        current["id"]
+    )
+
+    if not payout_account:
+        raise HTTPException(
+            status_code=400,
+            detail="Payout account is required before requesting withdrawal"
+        )
+
+    if not payout_account.is_active:
+        raise HTTPException(
+            status_code=400,
+            detail="Payout account is inactive"
+            )
     existing_result = await db.execute(
         select(Withdrawal)
         .where(

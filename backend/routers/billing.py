@@ -179,8 +179,9 @@ async def _extend_premium_and_reward(user_id: str, plan: dict, provider: str,
 
 # ---------- public endpoints ----------
 @router.get("/plans")
-async def get_plans(db: AsyncSession = Depends(get_db)):
-    plans = await SubscriptionService.get_active_plans(db)
+async def get_plans(current=Depends(get_current_user),
+                    db: AsyncSession = Depends(get_db)):
+    plans = await SubscriptionService.get_active_plans(db, current["role"])
 
     return {
         "plans": [
@@ -240,7 +241,7 @@ async def my_subscription(
 
 @router.post("/checkout")
 async def checkout(data: CheckoutIn, current=Depends(get_current_user), pg_db: AsyncSession = Depends(get_db)):
-    plan = await SubscriptionService.get_plan(
+    plan = await SubscriptionService.get_plan_by_code(
     pg_db,
     data.plan_id
     )
@@ -257,6 +258,11 @@ async def checkout(data: CheckoutIn, current=Depends(get_current_user), pg_db: A
             detail="Plan inactive"
         )
 
+    if plan.user_type != current["role"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Plan is not available for this user type"
+        )
     # ---- Token-funded path (instant) ----
     if data.pay_with == "tokens":
         await debit_tokens(current["id"], plan.price, "subscription",
@@ -425,7 +431,8 @@ async def verify_payment(
         await SubscriptionService.activate_plan(
             pg_db,
             subscription,
-            plan
+            plan,
+            payment_provider="razorpay"
         )
     )
 

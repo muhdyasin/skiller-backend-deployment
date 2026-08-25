@@ -42,12 +42,20 @@ class WithdrawalService:
     @staticmethod
     async def approve(
         db: AsyncSession,
-        withdrawal: Withdrawal
+        withdrawal: Withdrawal,
+        payout_provider: str = "manual",
+        payout_reference: str = None,
+        remarks: str = None,
     ):
         if withdrawal.status != "pending":
             raise ValueError(
                 f"Withdrawal cannot be approved from status '{withdrawal.status}'"
             )
+
+        if not payout_reference:
+            raise ValueError(
+                "Payout reference is required"
+        )
 
         wallet = await WalletService.get_wallet_for_update(
             db,
@@ -67,6 +75,9 @@ class WithdrawalService:
         )
 
         withdrawal.status = "successful"
+        withdrawal.payout_provider = payout_provider
+        withdrawal.payout_reference = payout_reference
+        withdrawal.remarks = remarks
         withdrawal.processed_at = datetime.utcnow()
 
         await db.commit()

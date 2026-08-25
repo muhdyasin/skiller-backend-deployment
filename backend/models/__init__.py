@@ -12,3 +12,4 @@ from .application import Application
 from .user import User
 from .user_follow import UserFollow
 from .xp_event import XPEvent
+from .creator_payout_account import CreatorPayoutAccount

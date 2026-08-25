@@ -1,15 +1,30 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 
 from db.dependencies import get_db
 from core import get_current_user
 from services.withdrawal_service import WithdrawalService
+
 
 router = APIRouter(
     prefix="/api/admin/withdrawals",
     tags=["admin-withdrawals"]
 )
 
+class ApproveWithdrawalRequest(BaseModel):
+    payout_provider: str = Field(
+        default="manual",
+        min_length=1,
+        max_length=50
+    )
+
+    payout_reference: str = Field(
+        min_length=1,
+        max_length=255
+    )
+
+    remarks: str | None = None
 
 def require_admin(user):
     if user.get("role") != "admin":
@@ -34,6 +49,7 @@ async def list_pending_withdrawals(
 @router.patch("/{withdrawal_id}/approve")
 async def approve_withdrawal(
     withdrawal_id: str,
+    data: ApproveWithdrawalRequest,
     current=Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -52,8 +68,11 @@ async def approve_withdrawal(
 
     try:
         return await WithdrawalService.approve(
-            db,
-            withdrawal
+            db=db,
+            withdrawal=withdrawal,
+            payout_provider=data.payout_provider,
+            payout_reference=data.payout_reference,
+            remarks=data.remarks
         )
     except ValueError as e:
         raise HTTPException(

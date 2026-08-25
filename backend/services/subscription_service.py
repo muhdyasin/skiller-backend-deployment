@@ -36,13 +36,25 @@ class SubscriptionService:
         if existing:
             return existing
 
+        plan = await SubscriptionService.get_plan_by_code(
+            db,
+            "free_trial"
+        )
+
+        if not plan:
+            raise ValueError(
+                "Free trial plan is not configured"
+            )
+
         start_date = datetime.utcnow()
-        expiry_date = start_date + timedelta(days=30)
+        expiry_date = start_date + timedelta(
+            days=plan.duration_days
+        )
 
         subscription = Subscription(
             user_id=user_id,
             user_type=user_type,
-            plan_id="trial",
+            plan_id=plan.id,
             status="trial",
             starts_at=start_date,
             expires_at=expiry_date
@@ -62,10 +74,9 @@ class SubscriptionService:
         plan: SubscriptionPlan,
         payment_provider: str = None
     ):
-        
         if payment_provider:
             subscription.payment_provider = payment_provider
-            
+
         now = datetime.utcnow()
 
         subscription.plan_id = plan.id
@@ -75,12 +86,10 @@ class SubscriptionService:
             subscription.expires_at
             and subscription.expires_at > now
         ):
-            # extend active subscription
             subscription.expires_at += timedelta(
                 days=plan.duration_days
             )
         else:
-            # activate fresh subscription
             subscription.starts_at = now
             subscription.expires_at = (
                 now + timedelta(days=plan.duration_days)
@@ -106,32 +115,54 @@ class SubscriptionService:
     def is_subscription_active(
         subscription: Subscription
     ) -> bool:
-
         return (
             subscription.status in ["trial", "active"]
             and subscription.expires_at > datetime.utcnow()
         )
-        
+
     @staticmethod
     async def get_plan(
-    db: AsyncSession,
-    plan_id: str
+        db: AsyncSession,
+        plan_id: str
     ):
         result = await db.execute(
-        select(SubscriptionPlan)
-        .where(SubscriptionPlan.id == plan_id)
+            select(SubscriptionPlan).where(
+                SubscriptionPlan.id == plan_id
+            )
         )
 
         return result.scalar_one_or_none()
-    
+
     @staticmethod
-    async def get_active_plans(
-    db: AsyncSession
+    async def get_plan_by_code(
+        db: AsyncSession,
+        code: str
     ):
         result = await db.execute(
-        select(SubscriptionPlan)
-        .where(SubscriptionPlan.is_active == True)
+            select(SubscriptionPlan).where(
+                SubscriptionPlan.code == code
+            )
         )
 
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_active_plans(
+        db: AsyncSession,
+        user_type: str = None
+    ):
+        query = (
+            select(SubscriptionPlan)
+            .where(
+                SubscriptionPlan.is_active == True
+            )
+        )
+
+        if user_type:
+            query = query.where(
+                SubscriptionPlan.user_type == user_type
+            )
+
+        result = await db.execute(query)
+
         return result.scalars().all()
-    
